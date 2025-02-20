@@ -1,0 +1,43 @@
+{
+  "32e5cf71-249e-4be7-a41f-6735a39994ec": {
+    "email": "yug@createstir.com",
+    "sentAt": "2025-02-19T14:08:10.371Z",
+    "lastOpened": "2025-02-19T14:13:42.003Z",
+    "openCount": 1,
+    "imageUrl": "https://saifstir.b-cdn.net/32e5cf71-249e-4be7-a41f-6735a39994ec.jpeg",
+    "opens": [
+      {
+        "timestamp": "2025-02-19T14:13:42.003Z",
+        "userAgent": "Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)",
+        "ipAddress": "66.249.84.0",
+        "location": "OG, US"
+      }
+    ],
+    "accessStats": []
+  },
+  "220f7e91-e44e-41f1-9b36-3cf09020e904": {
+    "email": "akshat@createstir.com",
+    "sentAt": "2025-02-19T14:08:10.379Z",
+    "lastOpened": "2025-02-19T14:14:40.793Z",
+    "openCount": 1,
+    "imageUrl": "https://saifstir.b-cdn.net/220f7e91-e44e-41f1-9b36-3cf09020e904.jpeg",
+    "opens": [
+      {
+        "timestamp": "2025-02-19T14:14:40.793Z",
+        "userAgent": "Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)",
+        "ipAddress": "66.249.84.0",
+        "location": "OG, US"
+      }
+    ],
+    "accessStats": []
+  },
+  "a64085d8-b37b-4a86-93db-8ee3c69a9919": {
+    "email": "akshat.a@gmail.com",
+    "sentAt": "2025-02-19T14:08:10.384Z",
+    "lastOpened": null,
+    "openCount": 0,
+    "imageUrl": "https://saifstir.b-cdn.net/a64085d8-b37b-4a86-93db-8ee3c69a9919.jpeg",
+    "opens": [],
+    "accessStats": []
+  }
+}
