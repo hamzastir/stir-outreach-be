@@ -10,6 +10,7 @@ import {
   updateCampaignSchedule,
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
+import { db } from "./src/db/db.js";
 dotenv.config();
 const app = express();
 
