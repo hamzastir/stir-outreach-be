@@ -1,11 +1,12 @@
 import axios from "axios";
+import { config } from "../config/index.js";
 export const getCurrentDate = () => {
-    const date = new Date();
-    return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-      date.getDate()
-    ).padStart(2, "0")}-${String(date.getFullYear()).slice(-2)}`;
-  };
-  
+  const date = new Date();
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}-${String(date.getFullYear()).slice(-2)}`;
+};
+
 export const fetchBunnyCDNLogs = async () => {
   const currentDate = getCurrentDate();
   const url = `https://logging.bunnycdn.com/${currentDate}/${config.PULL_ZONE_ID}.log`;

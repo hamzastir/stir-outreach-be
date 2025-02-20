@@ -1,8 +1,6 @@
-// server.js
-const express = require("express");
-const cors = require("cors");
-const fs = require("fs").promises;
-const path = require("path");
+import express from "express";
+import cors from "cors";
+import { db } from "../db/db.js";
 
 const app = express();
 
@@ -10,41 +8,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Path to the JSON file
-const dataFilePath = path.join(__dirname, "calendly-open.json");
-
-// Helper function to initialize the JSON file if it doesn't exist
-async function initializeDataFile() {
-  try {
-    await fs.access(dataFilePath);
-  } catch (error) {
-    // File doesn't exist, create it with an empty array
-    await fs.writeFile(dataFilePath, JSON.stringify([], null, 2));
-  }
-}
-
-// Helper function to read the JSON file
-async function readDataFile() {
-  try {
-    const data = await fs.readFile(dataFilePath, "utf8");
-    return JSON.parse(data);
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
-}
-
-// Helper function to write to the JSON file
-async function writeDataFile(data) {
-  await fs.writeFile(dataFilePath, JSON.stringify(data, null, 2));
-}
-
-// Initialize the server
 async function initializeServer() {
   try {
-    await initializeDataFile();
-    
-    // Calendly API endpoint
     app.post("/api/calendly", async (req, res) => {
       try {
         const { name, email, calendly, time } = req.body;
@@ -54,35 +19,48 @@ async function initializeServer() {
           return res.status(400).json({ error: "Name and email are required" });
         }
 
-        // Read existing data
-        const existingData = await readDataFile();
+        // Update the database
+        try {
+          const updateResult = await db("stir_outreach_dashboard")
+            .where("business_email", email)
+            .update({
+              calendly_link_clicked: true,
+              calendly_click_date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+              calendly_click_time: new Date().toISOString().split('T')[1].split('.')[0] // HH:MM:SS
+            });
 
-        // Create new entry
-        const newEntry = {
-          name,
-          email,
-          calendly: calendly || true,
-          time: time || new Date().toISOString(),
-        };
+          if (updateResult === 0) {
+            return res.status(404).json({ 
+              error: "No matching record found with the provided email" 
+            });
+          }
 
-        // Add new entry to existing data
-        existingData.push(newEntry);
+          // Fetch the updated record
+          const updatedRecord = await db("stir_outreach_dashboard")
+            .select("user_id", "username", "name", "business_email", "calendly_link_clicked", "calendly_click_date", "calendly_click_time")
+            .where("business_email", email)
+            .first();
 
-        // Write updated data back to file
-        await writeDataFile(existingData);
+          res.status(200).json({
+            message: "Data updated successfully",
+            data: updatedRecord
+          });
 
-        // Send success response
-        res.status(200).json({
-          message: "Data saved successfully",
-          data: newEntry,
-        });
+        } catch (dbError) {
+          console.error("Database error:", dbError);
+          return res.status(500).json({ 
+            error: "Database error occurred",
+            details: dbError.message 
+          });
+        }
+
       } catch (error) {
         console.error("Server error:", error);
         res.status(500).json({ error: "Internal server error" });
       }
     });
 
-    const PORT = 3002;
+    const PORT = process.env.PORT || 3002;
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
@@ -92,5 +70,4 @@ async function initializeServer() {
   }
 }
 
-// Start the server
 initializeServer();

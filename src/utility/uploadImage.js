@@ -4,6 +4,7 @@ import https from 'https';
 import {config} from '../config/index.js';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { db } from '../db/db.js';
 
 export const uploadTrackingImage = async (email) => {
   const uniqueId = uuidv4();
@@ -11,19 +12,11 @@ export const uploadTrackingImage = async (email) => {
   try {
     const filePath = "./stir.jpg";
     const imageUrl = await uploadImageToBunny(filePath, uniqueId);
-
-    // emailTracking[uniqueId] = {
-    //   email,
-    //   sentAt: new Date().toISOString(),
-    //   lastOpened: null,
-    //   openCount: 0,
-    //   imageUrl,
-    //   opens: [],
-    //   accessStats: [],
-    // };
-
-    // saveTrackingData();
-console.log({imageUrl})
+    await db('email_open_tracking_ids').insert({
+      tracking_id: uniqueId,
+      email: email,
+      image_url: imageUrl
+    });
     return { imageUrl, trackingId: uniqueId };
   } catch (error) {
     console.error("Error uploading tracking image:", error);
