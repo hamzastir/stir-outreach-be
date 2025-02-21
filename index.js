@@ -37,7 +37,7 @@ async function setupSmartLeadWebhook() {
       data: {
         id: null,
         name: "Email Activity Tracking Webhook",
-        webhook_url: `${process.env.BASE_URL}/api/webhook/smartlead`,
+        webhook_url: `https://stir-email-outreach.onrender.com/api/webhook/smartlead`,
         event_types: ['EMAIL_SENT', 'EMAIL_REPLY', 'LEAD_UNSUBSCRIBED'],
         categories: [ "Interested"]
       },
