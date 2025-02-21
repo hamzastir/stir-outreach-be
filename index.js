@@ -39,7 +39,7 @@ async function setupSmartLeadWebhook() {
         name: "Email Activity Tracking Webhook",
         webhook_url: `${process.env.BASE_URL}/api/webhook/smartlead`,
         event_types: ['EMAIL_SENT', 'EMAIL_REPLY', 'LEAD_UNSUBSCRIBED'],
-        categories: []
+        categories: [ "Interested"]
       },
       headers: { 'Content-Type': 'application/json' }
     });
