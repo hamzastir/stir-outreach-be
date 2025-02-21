@@ -57,14 +57,14 @@ async function handleEmailSent(data) {
     console.log('Webhook data received for email sent:', JSON.stringify(data, null, 2));
 
     // Check if we have the required email field
-    if (!data.lead_email) {
+    if (!data.to_email) {
       console.error('lead_email is missing in webhook data');
       return;
     }
 
     // Log the query we're about to execute
     const updateQuery = db("stir_outreach_dashboard")
-      .where("business_email", data.lead_email)
+      .where("business_email", data.to_email)
       .update({
         first_email_status: true,
         first_email_date: new Date().toISOString().split('T')[0],
@@ -93,7 +93,7 @@ async function handleEmailReply(data) {
     console.log('Email reply webhook data:', JSON.stringify(data, null, 2));
 
     // Validate incoming data
-    const emailToUpdate = data.lead_email || data.email || data.business_email;
+    const emailToUpdate = data.to_email;
     const replyContent = data.reply_body || data.reply_content || data.content;
     
     if (!emailToUpdate) {
@@ -142,7 +142,7 @@ async function handleLeadUnsubscribed(data) {
     console.log('Unsubscribe webhook data:', JSON.stringify(data, null, 2));
 
     // Validate incoming data
-    const emailToUpdate = data.lead_email || data.email || data.business_email;
+    const emailToUpdate = data.to_email;
     const unsubscribeReason = data.unsubscribe_reason || data.reason || '';
     
     if (!emailToUpdate) {
@@ -253,7 +253,7 @@ app.post('/api/webhook/smartlead', async (req, res) => {
     console.log('Raw webhook data:', JSON.stringify(webhookData, null, 2));
 
     // Validate the webhook data structure
-    if (!webhookData.lead_email) {
+    if (!webhookData.to_email) {
       throw new Error('Missing lead_email in webhook data');
     }
 
