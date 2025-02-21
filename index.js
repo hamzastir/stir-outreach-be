@@ -354,8 +354,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   try {
-    // await setupSmartLeadWebhook();
-    // console.log('SmartLead webhook setup completed');
+    await setupSmartLeadWebhook();
+    console.log('SmartLead webhook setup completed');
     await runCampaign();
   } catch (error) {
     console.error('Server initialization error:', error);
