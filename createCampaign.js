@@ -101,8 +101,8 @@ async function addEmailAccountToCampaign(campaignId, emailAccountIds) {
 async function main() {
   // await createEmailAccount();
   // await createCampaign();
-  await addEmailAccountToCampaign(1538096, [5940901]);
-  // await updateCampaignSettings(1538096);
+  await addEmailAccountToCampaign(1542003, [5940901]);
+  await updateCampaignSettings(1542003);
 }
 
 // Run the main function

@@ -1,8 +1,7 @@
 import express from "express";
-import fs from "fs";
 import dotenv from "dotenv";
+import cors from "cors";
 import { config } from "./src/config/index.js";
-import { fetchBunnyCDNLogs } from "./src/utility/fetchBunnyLogs.js";
 import {
   addLeadsToCampaign,
   createCampaignSequence,
@@ -11,11 +10,16 @@ import {
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
 import { db } from "./src/db/db.js";
+import { checkEmailOpens } from "./src/utility/trackOpen.js";
+
 dotenv.config();
 const app = express();
 
-console.log({ config });
+// Middleware
+app.use(cors());
 app.use(express.json());
+
+console.log({ config });
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -65,55 +69,11 @@ const execute = async () => {
   }
 };
 
-const checkEmailOpens = async () => {
-  try {
-    const logs = await fetchBunnyCDNLogs();
-
-    for (const log of logs) {
-      if (log.statusCode === "200") {
-        const match = log.url.match(/([a-f0-9-]+)\.jpeg$/);
-        if (match) {
-          const trackingId = match[1];
-
-          // Get tracking data from email_tracking table
-          const trackingData = await db("email_open_tracking_ids")
-            .where("tracking_id", trackingId)
-            .first();
-
-          if (trackingData && !trackingData.is_opened) {
-            // Update email_tracking table
-            await db("email_open_tracking_ids")
-              .where("tracking_id", trackingId)
-              .update({
-                is_opened: true,
-                opened_at: new Date(log.timestamp),
-              });
-
-            // Update main table
-            await db("stir_outreach_dashboard")
-              .where("business_email", trackingData.email)
-              .update({
-                email_opened: true,
-                email_open_date: new Date().toISOString().split('T')[0],
-                email_open_time : new Date().toISOString().split('T')[1].split('.')[0]              });
-
-            console.log(`Email opened: ${trackingData.email}`);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error checking email opens:", error);
-  }
-};
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-const runCampaign = async () => {
+const 
+runCampaign = async () => {
   try {
     await execute();
-    setInterval(checkEmailOpens, 5 * 60 * 1000); // Check every 5 minutes
+    setInterval(checkEmailOpens, 5 * 60 * 1000);
 
     await checkEmailOpens();
 
@@ -126,4 +86,68 @@ const runCampaign = async () => {
   }
 };
 
-runCampaign();
+// Routes
+app.get("/run", async (req, res) => {
+  try {
+    await runCampaign();
+    res.status(200).json({ message: "Campaign started successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to start campaign", details: error.message });
+  }
+});
+
+app.post("/api/calendly", async (req, res) => {
+  try {
+    const { name, email, calendly, time } = req.body;
+
+    // Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({ error: "Name and email are required" });
+    }
+
+    // Update the database
+    try {
+      const updateResult = await db("stir_outreach_dashboard")
+        .where("business_email", email)
+        .update({
+          calendly_link_clicked: true,
+          calendly_click_date: new Date().toISOString().split('T')[0],
+          calendly_click_time: new Date().toISOString().split('T')[1].split('.')[0]
+        });
+
+      if (updateResult === 0) {
+        return res.status(404).json({ 
+          error: "No matching record found with the provided email" 
+        });
+      }
+
+      // Fetch the updated record
+      const updatedRecord = await db("stir_outreach_dashboard")
+        .select("user_id", "username", "name", "business_email", "calendly_link_clicked", "calendly_click_date", "calendly_click_time")
+        .where("business_email", email)
+        .first();
+
+      res.status(200).json({
+        message: "Data updated successfully",
+        data: updatedRecord
+      });
+
+    } catch (dbError) {
+      console.error("Database error:", dbError);
+      return res.status(500).json({ 
+        error: "Database error occurred",
+        details: dbError.message 
+      });
+    }
+
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

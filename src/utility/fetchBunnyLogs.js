@@ -2,6 +2,7 @@ import axios from "axios";
 import { config } from "../config/index.js";
 export const getCurrentDate = () => {
   const date = new Date();
+  // BunnyCDN expects format: MM-DD-YY
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate()
   ).padStart(2, "0")}-${String(date.getFullYear()).slice(-2)}`;
@@ -21,7 +22,11 @@ export const fetchBunnyCDNLogs = async () => {
     });
 
     const data = response.data;
-    if (!data.trim()) return [];
+    // If no data, return empty array
+    if (!data || !data.trim()) {
+      console.log(`No logs found for date: ${currentDate}`);
+      return [];
+    }
 
     return data
       .split("\n")
@@ -58,7 +63,19 @@ export const fetchBunnyCDNLogs = async () => {
         };
       });
   } catch (error) {
-    console.error("Error fetching logs:", error);
-    throw error;
+    // Handle 404 gracefully
+    if (error.response && error.response.status === 404) {
+      console.log(`No logs available for date: ${currentDate}`);
+      return [];
+    }
+    
+    // Log other errors
+    console.error("Error fetching BunnyCDN logs:", {
+      status: error.response?.status,
+      message: error.message,
+      date: currentDate
+    });
+    
+    return [];
   }
 };

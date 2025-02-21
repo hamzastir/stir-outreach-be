@@ -13,7 +13,7 @@ async function generateEmailSnippets(username, email, captions, bio) {
         const prompt2 = `Generate a professional and formal welcome message for ${username} (${email}). Use their bio: "${bio}" and include a reference to "${captions}". Keep it concise and business-like. No greetings or signatures.`;
 
         const response1 = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "o1",
             messages: [
                 { role: "user", content: prompt1 },
                 { role: "system", content: "Provide only a single-sentence response without any greetings, signatures, or additional formatting." }

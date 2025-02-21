@@ -140,11 +140,11 @@ const prepareLead = (recipient) => {
 export const addLeadsToCampaign = async () => {
   // Get recipients from database
   const recipients = await prepareRecipients();
-
+  console.log({recipients})
   const validLeads = recipients
     .filter((r) => validateEmail(r.email))
     .map((r) => prepareLead(r));
-console.log({validLeads})
+
   if (validLeads.length === 0) {
     throw new Error("No valid leads to add to campaign");
   }
