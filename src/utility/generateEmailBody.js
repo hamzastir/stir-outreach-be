@@ -44,12 +44,11 @@ export const generateEmailBody = async (recipient) => {
 
     No pressure of course—feel free to reply to this email or set up a quick call here: <a href="${calendlyUrl}">Book a 30-minute meeting</a>
 
-    If you’re ready to dive in, you can also onboard directly here: [onboarding link]. <a href="${onboardingUrl}">Start Your Onboarding Process</a>
+    If you’re ready to dive in, you can also onboard directly here: <a href="${onboardingUrl}">Start Your Onboarding Process</a>
 
 <p>{Looking forward to hearing from you!|Looking forward to connecting with you!}</p>
 
-    PS: 
-    // ${recipient.snippet2}
+    PS: ${recipient.snippet2}
 
 <p>Best regards,<br>Yug</p>
 `;

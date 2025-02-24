@@ -195,7 +195,7 @@ app.listen(PORT, async () => {
   try {
     await setupSmartLeadWebhook();
     console.log('SmartLead webhook setup completed');
-    await runCampaign();
+    // await runCampaign();
   } catch (error) {
     console.error('Server initialization error:', error);
   }
