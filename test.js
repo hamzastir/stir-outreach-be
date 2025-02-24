@@ -1,6 +1,8 @@
 import { db } from "./src/db/db.js";
 import generateEmailSnippets from "./src/utility/createSnippet.js";
 
+// import { db } from "./src/db/primaryDb.js";
+
 async function getUserPostsAndBio(userId) {
   try {
     return await db("insta_users as u")
@@ -21,19 +23,40 @@ async function getUserPostsAndBio(userId) {
   }
 }
 
-// const userPosts = await getUserPostsAndBio();
-// console.log({userPosts})
-// const captions = userPosts.map((post) => post.caption).filter(Boolean);
-// const bio = userPosts[0]?.biography || "";
-// // const { snippet1 } = await generateEmailSnippets(
-// //   userPosts[0].username,
-// //   captions,
-// //   bio
-// // );
-const { snippet1 } = await generateEmailSnippets(
-  "axat02",
-  ["beautiful morning"],
-  "I think therefore i am "
-);
+const userPosts = await getUserPostsAndBio();
+console.log({userPosts})
+const captions = userPosts.map((post) => post.caption).filter(Boolean);
+const bio = userPosts[0]?.biography || "";
+// const { snippet1 } = await generateEmailSnippets(
+//   userPosts[0].username,
+//   captions,
+//   bio
+// );
+console.log(userPosts[0].username,
+  captions,
+  bio)
+// const { snippet1 } = await generateEmailSnippets(
+//   "axat02",
+//   ["beautiful morning"],
+//   "I think therefore i am "
+// );
 // console.log({ userPosts });
-console.log({ snippet1 });
+// console.log({ snippet1 });
+
+
+
+
+// async function getTopInfluencers() {
+//   try {
+//     const influencers = await db('customers')
+//       .select('*')
+//       .limit(3);
+
+//     console.log(influencers);
+//   } catch (error) {
+//     console.error('Error fetching top influencers:', error);
+//   }
+
+// }
+
+// getTopInfluencers();

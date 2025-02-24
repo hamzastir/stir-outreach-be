@@ -4,10 +4,13 @@ import cors from "cors";
 import axios from "axios";
 import { config } from "./src/config/index.js";
 import {
+  addEmailAccountToCampaign,
   addLeadsToCampaign,
   createCampaignSequence,
+  createNewCampaign,
   startCampaign,
   updateCampaignSchedule,
+  updateCampaignSettings,
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
 import { db } from "./src/db/db.js";
@@ -28,24 +31,37 @@ const execute = async () => {
   try {
     console.log("🚀 Starting SmartLead Campaign Automation");
 
-    await validateCampaignSetup();
+    // Create new campaign
+    const campaignId = await createNewCampaign();
 
     const steps = [
       {
+        name: "Add Email Account to Campaign",
+        fn: () => addEmailAccountToCampaign(campaignId),
+      },
+      {
+        name: "Update Campaign Settings",
+        fn: () => updateCampaignSettings(campaignId),
+      },
+      {
+        name: "Validate Campaign Setup",
+        fn: () => validateCampaignSetup(campaignId),
+      },
+      {
         name: "Update Campaign Schedule",
-        fn: () => updateCampaignSchedule(),
+        fn: () => updateCampaignSchedule(campaignId),
       },
       {
         name: "Add Leads to Campaign",
-        fn: () => addLeadsToCampaign(),
+        fn: () => addLeadsToCampaign(campaignId),
       },
       {
         name: "Create Campaign Sequence",
-        fn: () => createCampaignSequence(),
+        fn: () => createCampaignSequence(campaignId),
       },
       {
         name: "Start Campaign",
-        fn: () => startCampaign(),
+        fn: () => startCampaign(campaignId),
       },
     ];
 
@@ -75,7 +91,7 @@ const runCampaign = async () => {
     await execute();
     setInterval(checkEmailOpens, 5 * 60 * 1000);
 
-    await checkEmailOpens();
+    // await checkEmailOpens();
 
     console.log(
       "\n✅ Campaign execution completed. Use API endpoints to check statistics."
@@ -131,6 +147,8 @@ app.post('/api/webhook/smartlead', async (req, res) => {
 // Routes
 app.get("/run", async (req, res) => {
   try {
+    await setupSmartLeadWebhook();
+    console.log('SmartLead webhook setup completed');
     await runCampaign();
     res.status(200).json({ message: "Campaign started successfully" });
   } catch (error) {
@@ -140,47 +158,79 @@ app.get("/run", async (req, res) => {
 
 app.post("/api/calendly", async (req, res) => {
   try {
-    const { name, email, calendly, time } = req.body;
+    const { name, email } = req.body;
 
     // Validate required fields
     if (!name || !email) {
       return res.status(400).json({ error: "Name and email are required" });
     }
 
-    // Update the database
-    try {
-      const updateResult = await db("stir_outreach_dashboard")
-        .where("business_email", email)
-        .update({
-          calendly_link_clicked: true,
-          calendly_click_date: new Date().toISOString().split('T')[0],
-          calendly_click_time: new Date().toISOString().split('T')[1].split('.')[0]
-        });
-
-      if (updateResult === 0) {
-        return res.status(404).json({ 
-          error: "No matching record found with the provided email" 
-        });
-      }
-
-      // Fetch the updated record
-      const updatedRecord = await db("stir_outreach_dashboard")
-        .select("user_id", "username", "name", "business_email", "calendly_link_clicked", "calendly_click_date", "calendly_click_time")
-        .where("business_email", email)
-        .first();
-
-      res.status(200).json({
-        message: "Data updated successfully",
-        data: updatedRecord
+    // Update database
+    const updateResult = await db("stir_outreach_dashboard")
+      .where("business_email", email)
+      .update({
+        calendly_link_clicked: true,
+        calendly_click_date: new Date().toISOString().split('T')[0],
+        calendly_click_time: new Date().toISOString().split('T')[1].split('.')[0]
       });
 
-    } catch (dbError) {
-      console.error("Database error:", dbError);
-      return res.status(500).json({ 
-        error: "Database error occurred",
-        details: dbError.message 
+    if (updateResult === 0) {
+      return res.status(404).json({ 
+        error: "No matching record found with the provided email" 
       });
     }
+
+    // Schedule immediate follow-up
+    const api = createAxiosInstance();
+
+    // Add follow-up sequence
+    const followUpSequence = {
+      sequences: [
+        {
+          seq_number: 2, // Next sequence number
+          seq_delay_details: { delay_in_days: 0 }, // Send immediately
+          seq_variants: [
+            {
+              subject: `Thank you for your interest, ${name}!`,
+              email_body: `
+                <p>Hi ${name},</p>
+                
+                <p>Thank you for clicking on our calendar link! We're excited about the opportunity to connect with you.</p>
+                
+                <p>Please go ahead and choose a time that works best for you, and we'll make sure to have a productive conversation.</p>
+                
+                <p>Looking forward to speaking with you soon!</p>
+                
+                <p>Best regards,<br>Yug</p>
+              `,
+              variant_label: 'Follow_Up_A'
+            }
+          ]
+        }
+      ]
+    };
+
+    // Add sequence to campaign
+    await api.post(
+      `campaigns/${config.CAMPAIGN_ID}/sequences`,
+      followUpSequence
+    );
+
+    // Resume the lead immediately
+    await api.post(`campaigns/${config.CAMPAIGN_ID}/leads/${email}/resume`, {
+      resume_lead_with_delay_days: 0 // Resume immediately
+    });
+
+    // Fetch updated record
+    const updatedRecord = await db("stir_outreach_dashboard")
+      .select("user_id", "username", "name", "business_email", "calendly_link_clicked", "calendly_click_date", "calendly_click_time")
+      .where("business_email", email)
+      .first();
+
+    res.status(200).json({
+      message: "Follow-up email scheduled",
+      data: updatedRecord
+    });
 
   } catch (error) {
     console.error("Server error:", error);
@@ -188,14 +238,13 @@ app.post("/api/calendly", async (req, res) => {
   }
 });
 
-// Start server with webhook setup
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   try {
-    await setupSmartLeadWebhook();
-    console.log('SmartLead webhook setup completed');
-    // await runCampaign();
+ 
+    console.log('/run to run the server');
+  
   } catch (error) {
     console.error('Server initialization error:', error);
   }

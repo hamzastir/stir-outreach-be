@@ -91,7 +91,48 @@ export async function prepareRecipients() {
   }
 }
 
-export const updateCampaignSchedule = async () => {
+export async function createNewCampaign() {
+  return await withRetry(async () => {
+    const api = createAxiosInstance();
+    const data = {
+      name: "CreateStir Email Marketing Campaign",
+    };
+
+    const response = await api.post('campaigns/create', data);
+    console.log("✅ Campaign created:", response.data.id);
+    return response.data.id;
+  }, "createNewCampaign");
+}
+
+export async function addEmailAccountToCampaign(campaignId) {
+  return await withRetry(async () => {
+    const api = createAxiosInstance();
+    const data = {
+      email_account_ids: [5940901], // Using constant email account ID
+    };
+
+    const response = await api.post(`campaigns/${campaignId}/email-accounts`, data);
+    console.log("✅ Email account added to campaign:", response.data);
+    return response.data;
+  }, "addEmailAccountToCampaign");
+}
+
+export async function updateCampaignSettings(campaignId) {
+  return await withRetry(async () => {
+    const api = createAxiosInstance();
+    const data = {
+      track_settings: ["DONT_TRACK_EMAIL_OPEN", "DONT_TRACK_LINK_CLICK"],
+    };
+
+    const response = await api.post(`campaigns/${campaignId}/settings`, data);
+    console.log("✅ Campaign settings updated:", response.data);
+    return response.data;
+  }, "updateCampaignSettings");
+}
+
+
+
+export const updateCampaignSchedule = async (campaignId) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();
     const now = new Date();
@@ -115,7 +156,7 @@ export const updateCampaignSchedule = async () => {
     };
 
     const response = await api.post(
-      `campaigns/${config.CAMPAIGN_ID}/schedule`,
+      `campaigns/${campaignId}/schedule`,
       schedulePayload
     );
     console.log("✅ Campaign Schedule Updated Successfully:", response.data);
@@ -138,7 +179,7 @@ const prepareLead = (recipient) => {
   };
 };
 
-export const addLeadsToCampaign = async () => {
+export const addLeadsToCampaign = async (campaignId) => {
   // Get recipients from database
   const recipients = await prepareRecipients();
   const validLeads = recipients
@@ -151,7 +192,7 @@ export const addLeadsToCampaign = async () => {
   }
   return await withRetry(async () => {
     const api = createAxiosInstance();
-    const response = await api.post(`campaigns/${config.CAMPAIGN_ID}/leads`, {
+    const response = await api.post(`campaigns/${campaignId}/leads`, {
       lead_list: validLeads,
       settings: {
         ignore_global_block_list: true,
@@ -165,7 +206,7 @@ export const addLeadsToCampaign = async () => {
   }, "addLeadsToCampaign");
 };
 
-export const createCampaignSequence = async () => {
+export const createCampaignSequence = async (campaignId) => {
   const recipients = await prepareRecipients();
 
   return await withRetry(async () => {
@@ -193,7 +234,7 @@ export const createCampaignSequence = async () => {
     };
 
     const response = await api.post(
-      `campaigns/${config.CAMPAIGN_ID}/sequences`,
+      `campaigns/${campaignId}/sequences`,
       sequencePayload
     );
     console.log("✅ Campaign Sequence Created Successfully:", response.data);
@@ -201,10 +242,10 @@ export const createCampaignSequence = async () => {
   }, "createCampaignSequence");
 };
 
-export const startCampaign = async () => {
+export const startCampaign = async (campaignId) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();
-    const response = await api.post(`campaigns/${config.CAMPAIGN_ID}/status`, {
+    const response = await api.post(`campaigns/${campaignId}/status`, {
       status: "START",
     });
     console.log("✅ Campaign Started Successfully:", response.data);
@@ -212,10 +253,10 @@ export const startCampaign = async () => {
   }, "startCampaign");
 };
 
-export const validateCampaignSetup = async () => {
+export const validateCampaignSetup = async (campaignId) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();
-    const response = await api.get(`campaigns/${config.CAMPAIGN_ID}`);
+    const response = await api.get(`campaigns/${campaignId}`);
     if (!response.data) {
       throw new Error("Campaign not found");
     }
