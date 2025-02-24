@@ -18,13 +18,12 @@ const generateParameterizedUrls = (recipient) => {
 };
 
 export const generateEmailBody = async (recipient) => {
-  const { imageUrl, trackingId } = await uploadTrackingImage(recipient.email);
+  // const { imageUrl, trackingId } = await uploadTrackingImage(recipient.email);
   const { calendlyUrl, onboardingUrl } = generateParameterizedUrls(recipient);
 
   console.log({ calendlyUrl, onboardingUrl });
-  console.log({ trackingId });
 
-  const stirLogo = `<img src="${imageUrl}" width="40" height="40"/>`;
+  // const stirLogo = `<img src="${imageUrl}" width="40" height="40"/>`;
 
   return `
         <p>{Hi|Hey|Hello} ${recipient.firstName}, I’m Yug</p>
@@ -49,9 +48,9 @@ export const generateEmailBody = async (recipient) => {
 
 <p>{Looking forward to hearing from you!|Looking forward to connecting with you!}</p>
 
-    PS: ${recipient.snippet2}
+    PS: 
+    // ${recipient.snippet2}
 
 <p>Best regards,<br>Yug</p>
-
-${stirLogo}`;
+`;
 };

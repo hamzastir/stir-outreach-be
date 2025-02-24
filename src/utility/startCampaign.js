@@ -46,7 +46,7 @@ async function getUserPostsAndBio(userId) {
         "p.taken_at",
       ])
       .leftJoin("insta_posts as p", "u.user_id", "p.user_id")
-      .where("u.user_id", 106)
+      .where("u.user_id", 111)
       .orderBy("p.taken_at", "desc")
       .limit(4);
   } catch (error) {
@@ -68,6 +68,7 @@ export async function prepareRecipients() {
 
         // Extract captions from posts
         const captions = userPosts.map((post) => post.caption).filter(Boolean);
+   
         const bio = userPosts[0]?.biography || "";
         const { snippet1, snippet2 } = await generateEmailSnippets(
           user.username,
@@ -140,11 +141,11 @@ const prepareLead = (recipient) => {
 export const addLeadsToCampaign = async () => {
   // Get recipients from database
   const recipients = await prepareRecipients();
-  console.log({recipients})
   const validLeads = recipients
-    .filter((r) => validateEmail(r.email))
-    .map((r) => prepareLead(r));
-
+  .filter((r) => validateEmail(r.email))
+  .map((r) => prepareLead(r));
+  
+  console.log({validLeads})
   if (validLeads.length === 0) {
     throw new Error("No valid leads to add to campaign");
   }
@@ -153,9 +154,9 @@ export const addLeadsToCampaign = async () => {
     const response = await api.post(`campaigns/${config.CAMPAIGN_ID}/leads`, {
       lead_list: validLeads,
       settings: {
-        ignore_global_block_list: false,
+        ignore_global_block_list: true,
         ignore_unsubscribe_list: false,
-        ignore_duplicate_leads_in_other_campaign: false,
+        // ignore_duplicate_leads_in_other_campaign: false,
       },
     });
 
