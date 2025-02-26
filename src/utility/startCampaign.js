@@ -213,12 +213,12 @@ export const createCampaignSequence = async (campaignId) => {
     const api = createAxiosInstance();
     const sequenceVariants = await Promise.all(
       recipients.map(async (recipient, index) => ({
-        subject: `Hi ${recipient.firstName}, Let's Connect!`,
+        subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
         email_body: await generateEmailBody({
           ...recipient,
           snippet1: recipient.snippet1,
           snippet2: recipient.snippet2,
-        }),
+        }),  
         variant_label: `Variant_${index + 1}`,
       }))
     );

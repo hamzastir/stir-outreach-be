@@ -1,11 +1,39 @@
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import { db } from "../db/primaryDb.js";
 dotenv.config();
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "",
 });
+async function getTopInfluencers() {
+  try {
+    const influencers = await db('influencer_onboarded')
+      .select('handle')
+      .where('onboard_completed', true)
+      .andWhere('onboarded_at', '>=', db.raw("NOW() - INTERVAL '15 days'"))
+      .orderBy('total_audience', 'desc') // Sorting by audience size
+      .limit(2); // Fetch top 25 influencers
 
+    if (influencers.length === 0) {
+      return ""; // Return empty if no influencers are found
+    }
+
+    // Extract handles and format the message
+    const handles = influencers.map(i => `@${i.handle}`);
+    const firstTwo = handles.slice(0, 2).join(", ");
+    
+
+    return `${firstTwo} + 23 others have recently got their exclusive access to Stir!`
+     
+
+  } catch (error) {
+    console.error('Error fetching top influencers:', error);
+    return "";
+  }
+}
+
+getTopInfluencers();
 async function generateEmailSnippets(username, email, captions, bio) {
   try {
     const prompt1 = `
@@ -91,10 +119,11 @@ Imp point: Only talk about the content available on their insta handle and do no
       messages: [{ role: "user", content: prompt1 }],
     });
 
+    const dbResult = await getTopInfluencers();
+    
     return {
       snippet1: response1.choices[0]?.message?.content?.trim() || "",
-      snippet2:
-        "@filmtvrate, @munyrags + 23 others have recently got their exclusive access to Stir!",
+      snippet2: dbResult,
     };
   } catch (error) {
     console.error("Error generating email snippets:", error);

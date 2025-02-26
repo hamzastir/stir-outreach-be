@@ -1,4 +1,4 @@
-import { uploadTrackingImage } from "./uploadImage.js";
+// import { uploadTrackingImage } from "./uploadImage.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -25,31 +25,18 @@ export const generateEmailBody = async (recipient) => {
 
   // const stirLogo = `<img src="${imageUrl}" width="40" height="40"/>`;
 
-  return `
-        <p>{Hi|Hey|Hello} ${recipient.firstName}, I’m Yug</p>
+  return `{Hi|Hey|Hello} @${recipient.firstName}, I’m Yug<br>
+${recipient.snippet1}<br>
+  We’re building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
+What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.<br>
+ {I’d love to hear your thoughts and see if this is something you’d like to explore|I'd love to hear your story and see if Stir is the right fit for you!}.<br>
+{No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="${calendlyUrl}">schedule</a>. Or if you’re ready to dive in, you can also onboard here: <a href="${onboardingUrl}">onboard</a>.<br>
+{Looking forward to hearing from you!|Looking forward to connecting with you!}<br>
+{Best!|Cheers!|Viva cinema!}<br>
+Yug<br>
+VP of Stellar Beginnings!<br>
 
-<p>${recipient.snippet1}</p>
-
-    I wanted to reach out because we’re building something exciting at Stir.  
-    It’s an invite-only platform designed specifically for film influencers like you.  
-    It gives early access to upcoming releases and direct collaboration opportunities  
-    with indie filmmakers and major studios.
-
-    Here’s what makes Stir unique:<br>
-    - A flat 10% take rate—no hidden fees or subscriptions.<br>
-    - Easy-to-use tools to streamline collaborations with filmmakers.<br>
-    - Curated matchmaking to connect you with the right industry partners.
-
-    I’d love to hear your thoughts and see if this is something you’d like to explore.  
-
-    No pressure of course—feel free to reply to this email or set up a quick call here: <a href="${calendlyUrl}">Book a 30-minute meeting</a>
-
-    If you’re ready to dive in, you can also onboard directly here: <a href="${onboardingUrl}">Start Your Onboarding Process</a>
-
-<p>{Looking forward to hearing from you!|Looking forward to connecting with you!}</p>
-
-    PS: ${recipient.snippet2}
-
-<p>Best regards,<br>Yug</p>
+PS: ${recipient.snippet2}
+<br>
 `;
 };
