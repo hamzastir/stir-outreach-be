@@ -35,7 +35,6 @@ What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% tak
 {Best!|Cheers!|Viva cinema!}<br>
 Yug<br>
 VP of Stellar Beginnings!<br>
-
 PS: ${recipient.snippet2}
 <br>
 `;

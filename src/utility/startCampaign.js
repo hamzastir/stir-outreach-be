@@ -3,6 +3,7 @@ import { createAxiosInstance } from "../utility/axiosInstance.js";
 import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
+import { data } from "../../data.js";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const withRetry = async (operation, name) => {
@@ -33,52 +34,72 @@ async function getUsersToSchedule() {
     throw error;
   }
 }
-
-// Function to get user's posts and bio
-async function getUserPostsAndBio(userId) {
+// Modified getUserPostsAndBio to return data.json content for any userId
+async function getUserPostsAndBio(userId, index) {
   try {
-    return await db("insta_users as u")
-      .select([
-        "u.user_id",
-        "u.username",
-        "u.biography",
-        "p.caption",
-        "p.taken_at",
-      ])
-      .leftJoin("insta_posts as p", "u.user_id", "p.user_id")
-      .where("u.user_id", 111)
-      .orderBy("p.taken_at", "desc")
-      .limit(4);
+    // Use data entries cyclically
+    const dataIndex = index % data.length;
+    const userData = data[dataIndex];
+
+    return [
+      {
+        user_id: userId,
+        username: userData.username,
+        biography: userData.biography,
+        caption: userData.caption1,
+        taken_at: new Date(),
+      },
+      {
+        user_id: userId,
+        username: userData.username,
+        biography: userData.biography,
+        caption: userData.caption2,
+        taken_at: new Date(),
+      },
+      {
+        user_id: userId,
+        username: userData.username,
+        biography: userData.biography,
+        caption: userData.caption3,
+        taken_at: new Date(),
+      },
+      {
+        user_id: userId,
+        username: userData.username,
+        biography: userData.biography,
+        caption: userData.caption4,
+        taken_at: new Date(),
+      },
+    ];
   } catch (error) {
-    console.error("Error fetching user posts and bio:", error);
+    console.error("Error fetching user posts and bio from data.js:", error);
     throw error;
   }
 }
 
 export async function prepareRecipients() {
   try {
-    // Get users who need emails scheduled
     const usersToSchedule = await getUsersToSchedule();
 
-    // Prepare recipients array
     const recipients = await Promise.all(
-      usersToSchedule.map(async (user) => {
-        // Get user's posts and bio
-        const userPosts = await getUserPostsAndBio(user.user_id);
-
-        // Extract captions from posts
-        const captions = userPosts.map((post) => post.caption).filter(Boolean);
-   
+      usersToSchedule.map(async (user, index) => {
+        const userPosts = await getUserPostsAndBio(user.user_id, index);
+        const captions = userPosts.map((post) => post.caption);
         const bio = userPosts[0]?.biography || "";
+
+        // Use username from data.js instead of database
+        const dataUsername = userPosts[0].username;
+
         const { snippet1, snippet2 } = await generateEmailSnippets(
-          user.username,
+          dataUsername,
           user.business_email,
           captions,
           bio
         );
+
         return {
           email: user.business_email,
-          firstName: user.username, // Using username instead of firstName
+          firstName: dataUsername, // Using username from data.js
           snippet1,
           snippet2,
         };
@@ -91,6 +112,63 @@ export async function prepareRecipients() {
   }
 }
 
+// // Function to get user's posts and bio
+// async function getUserPostsAndBio(userId) {
+//   try {
+//     return await db("insta_users as u")
+//       .select([
+//         "u.user_id",
+//         "u.username",
+//         "u.biography",
+//         "p.caption",
+//         "p.taken_at",
+//       ])
+//       .leftJoin("insta_posts as p", "u.user_id", "p.user_id")
+//       .where("u.user_id", 111)
+//       .orderBy("p.taken_at", "desc")
+//       .limit(4);
+//   } catch (error) {
+//     console.error("Error fetching user posts and bio:", error);
+//     throw error;
+//   }
+// }
+
+// export async function prepareRecipients() {
+//   try {
+//     // Get users who need emails scheduled
+//     const usersToSchedule = await getUsersToSchedule();
+
+//     // Prepare recipients array
+//     const recipients = await Promise.all(
+//       usersToSchedule.map(async (user) => {
+//         // Get user's posts and bio
+//         const userPosts = await getUserPostsAndBio(user.user_id);
+
+//         // Extract captions from posts
+//         const captions = userPosts.map((post) => post.caption).filter(Boolean);
+
+//         const bio = userPosts[0]?.biography || "";
+//         const { snippet1, snippet2 } = await generateEmailSnippets(
+//           user.username,
+//           user.business_email,
+//           captions,
+//           bio
+//         );
+//         return {
+//           email: user.business_email,
+//           firstName: user.username, // Using username instead of firstName
+//           snippet1,
+//           snippet2,
+//         };
+//       })
+//     );
+//     return recipients;
+//   } catch (error) {
+//     console.error("Error preparing recipients:", error);
+//     throw error;
+//   }
+// }
+
 export async function createNewCampaign() {
   return await withRetry(async () => {
     const api = createAxiosInstance();
@@ -98,7 +176,7 @@ export async function createNewCampaign() {
       name: "CreateStir Email Marketing Campaign",
     };
 
-    const response = await api.post('campaigns/create', data);
+    const response = await api.post("campaigns/create", data);
     console.log("✅ Campaign created:", response.data.id);
     return response.data.id;
   }, "createNewCampaign");
@@ -111,7 +189,10 @@ export async function addEmailAccountToCampaign(campaignId) {
       email_account_ids: [5940901], // Using constant email account ID
     };
 
-    const response = await api.post(`campaigns/${campaignId}/email-accounts`, data);
+    const response = await api.post(
+      `campaigns/${campaignId}/email-accounts`,
+      data
+    );
     console.log("✅ Email account added to campaign:", response.data);
     return response.data;
   }, "addEmailAccountToCampaign");
@@ -129,8 +210,6 @@ export async function updateCampaignSettings(campaignId) {
     return response.data;
   }, "updateCampaignSettings");
 }
-
-
 
 export const updateCampaignSchedule = async (campaignId) => {
   return await withRetry(async () => {
@@ -183,10 +262,10 @@ export const addLeadsToCampaign = async (campaignId) => {
   // Get recipients from database
   const recipients = await prepareRecipients();
   const validLeads = recipients
-  .filter((r) => validateEmail(r.email))
-  .map((r) => prepareLead(r));
-  
-  console.log({validLeads})
+    .filter((r) => validateEmail(r.email))
+    .map((r) => prepareLead(r));
+
+  console.log({ validLeads: JSON.stringify(validLeads) });
   if (validLeads.length === 0) {
     throw new Error("No valid leads to add to campaign");
   }
@@ -218,7 +297,7 @@ export const createCampaignSequence = async (campaignId) => {
           ...recipient,
           snippet1: recipient.snippet1,
           snippet2: recipient.snippet2,
-        }),  
+        }),
         variant_label: `Variant_${index + 1}`,
       }))
     );

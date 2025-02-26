@@ -5,15 +5,15 @@ dotenv.config();
 
 
 const API_KEY = process.env.SMARTLEAD_API_KEY;
-const CAMPAIGN_ID = process.env.CAMPAIGN_ID;
+// const CAMPAIGN_ID = process.env.CAMPAIGN_ID;
 const BASE_URL = 'https://server.smartlead.ai/api/v1';
 
 // Function to setup SmartLead webhook
-export async function setupSmartLeadWebhook() {
+export async function setupSmartLeadWebhook(campaignId) {
   try {
     const response = await axios({
       method: 'POST',
-      url: `${BASE_URL}/campaigns/${CAMPAIGN_ID}/webhooks`,
+      url: `${BASE_URL}/campaigns/${campaignId}/webhooks`,
       params: { api_key: API_KEY },
       data: {
         id: null,

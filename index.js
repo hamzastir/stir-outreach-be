@@ -12,10 +12,11 @@ import {
   updateCampaignSettings,
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
-import { checkEmailOpens } from "./src/utility/trackOpen.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
 import { handleCalendlyClick } from "./src/utility/calendlyController.js";
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
+import userRoutes from './src/routes/users.js'
+import instaUserRoutes from './src/routes/insta-users.js'
 
 dotenv.config();
 const app = express();
@@ -98,7 +99,7 @@ const execute = async () => {
 const runCampaign = async () => {
   try {
     const campaignId = await execute();
-    setInterval(checkEmailOpens, 5 * 60 * 1000);
+    
 
     console.log(
       "\n✅ Campaign execution completed. Use API endpoints to check statistics."
@@ -121,11 +122,13 @@ app.post("/api/calendly", (req, res) => {
 });
 
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
+app.use("/api/outreach", userRoutes); 
+app.use("/api/insta-users", instaUserRoutes); 
 
 // Routes
 app.get("/run", async (req, res) => {
   try {
-    await setupSmartLeadWebhook();
+    await setupSmartLeadWebhook(globalCampaignId);
     console.log("SmartLead webhook setup completed");
     const campaignId = await runCampaign();
     res.status(200).json({ 
