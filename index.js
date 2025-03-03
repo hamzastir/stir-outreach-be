@@ -134,9 +134,9 @@ app.use("/api/insta-users", instaUserRoutes);
 // Routes
 app.get("/run", async (req, res) => {
   try {
-    await setupSmartLeadWebhook(1611619);
-    console.log("SmartLead webhook setup completed");
     const campaignId = await runCampaign();
+    await setupSmartLeadWebhook(campaignId);
+    console.log("SmartLead webhook setup completed");
     res.status(200).json({ 
       message: "Campaign started successfully", 
       campaignId 
