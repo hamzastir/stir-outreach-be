@@ -259,30 +259,50 @@ const prepareLead = (recipient) => {
 };
 
 export const addLeadsToCampaign = async (campaignId) => {
-  // Get recipients from database
-  const recipients = await prepareRecipients();
-  const validLeads = recipients
-    .filter((r) => validateEmail(r.email))
-    .map((r) => prepareLead(r));
+  try {
+    // Get recipients from database
+    const recipients = await prepareRecipients();
+    const validLeads = recipients
+      .filter((r) => validateEmail(r.email))
+      .map((r) => prepareLead(r));
 
-  console.log({ validLeads: JSON.stringify(validLeads) });
-  if (validLeads.length === 0) {
-    throw new Error("No valid leads to add to campaign");
+    console.log({ validLeads: JSON.stringify(validLeads) });
+    if (validLeads.length === 0) {
+      throw new Error("No valid leads to add to campaign");
+    }
+
+    const response = await withRetry(async () => {
+      const api = createAxiosInstance();
+      const response = await api.post(`campaigns/${campaignId}/leads`, {
+        lead_list: validLeads,
+        settings: {
+          ignore_global_block_list: true,
+          ignore_unsubscribe_list: false,
+        },
+      });
+
+      console.log("✅ Leads Added Successfully:", response.data);
+      return response.data;
+    }, "addLeadsToCampaign");
+
+    // Update the first_email_status to "scheduled" for the processed emails
+    await Promise.all(
+      validLeads.map(async (lead) => {
+        await db("stir_outreach_dashboard")
+          .where("business_email", lead.email)
+          .update({
+            first_email_status: "scheduled"
+          });
+      })
+    );
+
+    console.log("✅ Updated first_email_status to scheduled for processed leads");
+    return response;
+
+  } catch (error) {
+    console.error("Error in addLeadsToCampaign:", error);
+    throw error;
   }
-  return await withRetry(async () => {
-    const api = createAxiosInstance();
-    const response = await api.post(`campaigns/${campaignId}/leads`, {
-      lead_list: validLeads,
-      settings: {
-        ignore_global_block_list: true,
-        ignore_unsubscribe_list: false,
-        // ignore_duplicate_leads_in_other_campaign: false,
-      },
-    });
-
-    console.log("✅ Leads Added Successfully:", response.data);
-    return response.data;
-  }, "addLeadsToCampaign");
 };
 
 export const createCampaignSequence = async (campaignId) => {
