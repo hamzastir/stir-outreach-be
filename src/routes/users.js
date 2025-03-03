@@ -37,5 +37,22 @@ router.get("/users", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
+router.post("/add-users", async (req, res) => {
+    try {
+      const users = req.body.users; // Expecting an array of user objects
+  
+      // Validate input
+      if (!Array.isArray(users) || users.length === 0) {
+        return res.status(400).json({ error: "User data is required and should be an array." });
+      }
+  
+      const newUsers = await db("stir_outreach_dashboard").insert(users).returning("*");
+  
+      res.status(201).json({ message: "Users added successfully", users: newUsers });
+    } catch (error) {
+      console.error("Error adding users:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
 export default router;

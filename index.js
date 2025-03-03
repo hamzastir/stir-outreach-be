@@ -13,7 +13,7 @@ import {
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
-import { handleCalendlyClick } from "./src/utility/calendlyController.js";
+import { handleCalendlyClick, handleOnboardingClick } from "./src/utility/calendlyController.js";
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from './src/routes/users.js'
 import instaUserRoutes from './src/routes/insta-users.js'
@@ -114,13 +114,19 @@ const runCampaign = async () => {
 
 // Update the Calendly handler to use the global campaignId
 app.post("/api/calendly", (req, res) => {
-  if (!globalCampaignId) {
-    return res.status(400).json({ error: "No active campaign found" });
-  }
+  // if (!globalCampaignId) {
+  //   return res.status(400).json({ error: "No active campaign found" });
+  // }
   
-  return handleCalendlyClick(req, res, globalCampaignId);
+  return handleCalendlyClick(req, res, 1611619);
 });
-
+app.post("/api/onboarding", (req, res) => {
+  // if (!globalCampaignId) {
+  //   return res.status(400).json({ error: "No active campaign found" });
+  // }
+  
+  return handleOnboardingClick(req, res, 1611619);
+});
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes); 
 app.use("/api/insta-users", instaUserRoutes); 
@@ -128,7 +134,7 @@ app.use("/api/insta-users", instaUserRoutes);
 // Routes
 app.get("/run", async (req, res) => {
   try {
-    await setupSmartLeadWebhook(globalCampaignId);
+    await setupSmartLeadWebhook(1611619);
     console.log("SmartLead webhook setup completed");
     const campaignId = await runCampaign();
     res.status(200).json({ 
