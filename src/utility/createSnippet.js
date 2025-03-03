@@ -122,7 +122,7 @@ Imp point: Only talk about the content available on their insta handle and do no
     const dbResult = await getTopInfluencers();
     
     return {
-      snippet1: response1.choices[0]?.message?.content?.trim() || "",
+      snippet1: "response1.choices[0]?.message?.content?.trim()" || "",
       snippet2: dbResult,
     };
   } catch (error) {
