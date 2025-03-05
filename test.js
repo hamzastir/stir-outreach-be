@@ -1,108 +1,175 @@
-// // import { db } from "./src/db/db.js";
-// // import generateEmailSnippets from "./src/utility/createSnippet.js";
+import dotenv from "dotenv";
+import fs from "fs";
+dotenv.config();
+import express from "express";
+import { fetchUserInfo, fetchUserPosts } from "./instaUser.js";
+import { generateEmailSnippets } from "./generateTestSnippet.js";
+import generateEmailSnippetsR1 from "./generateTestSnippetR1.js";
+const app = express();
+const API_HOST = "instagram-scraper-api2.p.rapidapi.com";
+const port = 9999;
 
-// import { db } from "./src/db/primaryDb.js";
-
-// // async function getUserPostsAndBio(userId) {
-// //   try {
-// //     return await db("insta_users as u")
-// //       .select([
-// //         "u.user_id",
-// //         "u.username",
-// //         "u.biography",
-// //         "p.caption",
-// //         "p.taken_at",
-// //       ])
-// //       .leftJoin("insta_posts as p", "u.user_id", "p.user_id")
-// //       .where("u.user_id", 111)
-// //       .orderBy("p.taken_at", "desc")
-// //       .limit(4);
-// //   } catch (error) {
-// //     console.error("Error fetching user posts and bio:", error);
-// //     throw error;
-//  // }
-// // }
-
-// // const userPosts = await getUserPostsAndBio();
-// // console.log({userPosts})
-// // const captions = userPosts.map((post) => post.caption).filter(Boolean);
-// // const bio = userPosts[0]?.biography || "";
-// // const { snippet1 } = await generateEmailSnippets(
-// //   userPosts[0].username,
-// //   captions,
-// //   bio
-// // );
-// // console.log(userPosts[0].username,
-// //   captions,
-// //   bio)
-// // const { snippet1 } = await generateEmailSnippets(
-// //   "axat02",
-// //   ["beautiful morning"],
-// //   "I think therefore i am "
-// // );
-// // console.log({ userPosts });
-// // console.log({ snippet1 });
-
-
-
-
-// async function getTopInfluencers() {
-//   try {
-//     const influencers = await db('influencer_onboarded')
-//       .select('handle')
-//       .where('onboard_completed', true)
-//       .andWhere('onboarded_at', '>=', db.raw("NOW() - INTERVAL '15 days'"))
-//       .orderBy('total_audience', 'desc') // Sorting by audience size
-//       .limit(2); // Fetch top 25 influencers
-
-//     if (influencers.length === 0) {
-//       return ""; // Return empty if no influencers are found
-//     }
-
-//     // Extract handles and format the message
-//     const handles = influencers.map(i => `@${i.handle}`);
-//     const firstTwo = handles.slice(0, 2).join(", ");
-    
-
-//     return `${firstTwo} + 23 others have recently got their exclusive access to Stir!`
-     
-
-//   } catch (error) {
-//     console.error('Error fetching top influencers:', error);
-//     return "";
-//   }
-// }
-
-// const snippe2 = await getTopInfluencers();
-// console.log(snippe2)
-
-import generateEmailSnippets from './src/utility/createSnippetR1.js'; // Adjust the import path accordingly
-
-async function testGenerateEmailSnippets() {
+// Function to process a single username
+// Function to process a single username
+async function processUsername(username) {
   try {
-    // Mock data for testing
-    const username = "Cindy Tang";
-    const email = "cindy.tang@example.com";
-    const bio = "a celebration of cinematic history\nbringing comfort through film, tv & music";
-    const captions = `
-      Are they lovers? Worse. II happy love week! to celebrate, I’m listing some of the most uniquely loved ships by fandoms that hurt too good. I had full faith that these ships SHOULD have been together… many of these are requested by you, and I can’t wait to hear more of your ships. ❤‍🩹Q: Which couple is your “Are they lovers? Worse.”
-      Music of Winter Films & TV ❄🎼✨these are some of my favourite music that REMINDS me of winter, the feeling of winter, the chill of winter. it’s crisp, magical, and with hints of snowfall i can’t quite explain. just close your eyes, and hear it for yourself. 🤍i’m curious to know however: Q: What music reminds you of Winter?
-      la la land (2016) - the look of LOVE. 💜 “I’m always gonna love you.” hits different when you know the ending to this film. it shows that even in alternate versions of our lives, we think about what could have been. and more realistically: letting go of what could be 🤍.how beautiful, for #lalaland to give us that bittersweet heartfelt ending? one that will always be remembered. Q: Which La La Land moment was your favourite?
-      Iconic Squid Game Characters as Croissants II 🥐✨you asked? we’ll deliver! fresh from the oven, are 9 new Squid Game Croissants served in character form. quick! eat it before it’s cold. 🤍@dizzypumpkinart and I partnered together again to have these croissants special made for you and your favourite characters ;). shoutout to @squidgamenetflix & @squidgameunleashed for making our day by supporting our previous post 🎀 this one’s for you! Q: Which Squid Game croissant is your favourite?
-    `;
+    console.log(`Processing username: ${username}`);
 
-    // Call the function
-    const result = await generateEmailSnippets(username, email, captions, bio);
+    const userPosts = await fetchUserPosts(username);
+    const userBio = await fetchUserInfo(username);
+    const biography = userBio?.data?.biography;
 
-    // Log the results
-    console.log("Generated Email Snippet 1:");
-    console.log(result.snippet1);
-    console.log("\nGenerated Email Snippet 2 (Top Influencers):");
-    console.log(result.snippet2);
+    const filteredPosts = userPosts?.data?.items
+      .filter((post) => !post.is_pinned)
+      .map((post) => ({
+        caption: post?.caption?.text,
+        taken_at_date: post.taken_at_date,
+      }))
+      .slice(0, 5);
+
+    const captions = filteredPosts.map((post) => post.caption);
+    
+    // Get snippets from different models
+    // const o1Snippet = await generateEmailSnippets(username, captions, biography);
+    const r1Result = await generateEmailSnippetsR1(username, captions, biography);
+
+    return {
+      username,
+      biography,
+      caption1: filteredPosts[0]?.caption || "",
+      caption2: filteredPosts[1]?.caption || "",
+      caption3: filteredPosts[2]?.caption || "",
+      caption4: filteredPosts[3]?.caption || "",
+      caption5: filteredPosts[4]?.caption || "",
+      // "o1-mini": o1Snippet,
+      "deepseek-r1": r1Result.snippet,
+    };
   } catch (error) {
-    console.error("Test failed:", error);
+    console.error(`Error processing ${username}:`, error);
+    return null;
   }
 }
 
-// Run the test
-testGenerateEmailSnippets();
+// Array of usernames to process
+const usernames = [
+  "filmprobe",
+  "cinemafromthepast",
+  "thecinemonie",
+  "asiancinemaarchive",
+  "filmsyoushouldbewatching",
+  "rayanistyping",
+  "cineoholic",
+  "thecinemagroup",
+  "unyolo_movies_blog",
+  "cineatomy",
+  "moviepass",
+  "movies.capsule",
+  // "thecinemagroupnews",
+  // "luckychap",
+  // "raindancefilmfestival",
+  // "aliplumb",
+  // "officialuniversalmonsters",
+  // "barbicancentre",
+  // "moviewatchinggirl",
+  // "cine.magician",
+  // "gabriellak_k",
+  // "frankfilmclub",
+  // "filmtitan",
+];
+
+app.get("/", async (req, res) => {
+  try {
+    const results = [];
+
+    // Process each username sequentially
+    for (const username of usernames) {
+      const result = await processUsername(username);
+      if (result) {
+        results.push(result);
+
+        // Save to file after each successful processing
+        fs.writeFileSync("output.json", JSON.stringify(results, null, 2));
+        console.log(`Saved results for ${username} to output.json`);
+      }
+
+      // Add a delay between requests to avoid rate limiting
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    res.json({ message: "Processing complete", count: results.length });
+  } catch (error) {
+    console.error("Main error:", error);
+    res.status(500).json({ error: "An error occurred" });
+  }
+});
+
+app.get("/userdata", async(req, res)=>{
+  const userData = await fetchUserInfo('frankfilmclub');
+  // unyolo_movies_blog, luckychap, moviepass, movies.capsule, officialuniversalmonsters, gabriellak_k, cine.magician, filmtitan
+  res.json(userData);
+})
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+app.get("/user", async (req, res) => {
+  try {
+    if (!Array.isArray(usernames) || usernames.length === 0) {
+      return res.status(400).json({ error: "Invalid or empty usernames array" });
+    }
+
+    const results = {};
+    const BATCH_SIZE = 5; // Process 5 usernames at a time
+    const DELAY_BETWEEN_REQUESTS = 2000; // 2 seconds delay between requests
+    const MAX_RETRIES = 3;
+
+    // Process usernames in batches
+    for (let i = 0; i < usernames.length; i += BATCH_SIZE) {
+      const batch = usernames.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(async (username) => {
+        for (let retry = 0; retry < MAX_RETRIES; retry++) {
+          try {
+            await delay(DELAY_BETWEEN_REQUESTS); // Add delay before each request
+            const userDetails = await fetchUserInfo(username);
+            
+            results[username] = {
+              biography_email: userDetails?.data?.biography_email || null,
+              public_email: userDetails?.data?.public_email || null
+            };
+            
+            break; // Success - exit retry loop
+          } catch (error) {
+            if (error.status === 429) { // Rate limit error
+              const retryAfter = parseInt(error.headers?.['retry-after']) || 30;
+              await delay(retryAfter * 1000); // Wait for the specified time
+              continue; // Try again
+            }
+            
+            console.error(`Error fetching details for ${username} (attempt ${retry + 1}):`, error);
+            
+            if (retry === MAX_RETRIES - 1) { // Last retry
+              results[username] = {
+                biography_email: null,
+                public_email: null,
+                error: "Failed to fetch after multiple attempts"
+              };
+            }
+          }
+        }
+      });
+
+      await Promise.all(batchPromises);
+    }
+
+    res.json(results);
+
+  } catch (error) {
+    console.error("Error in user details API:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+
+app.listen(port, () => {
+  console.log("Listening on port " + port);
+});

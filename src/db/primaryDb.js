@@ -16,7 +16,7 @@ const knexConfig = {
     },
     pool: {
       min: 2,
-      max: 10,
+      max: 20,
       idleTimeoutMillis: 30000
     },
 };

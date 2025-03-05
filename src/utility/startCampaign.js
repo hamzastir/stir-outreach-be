@@ -26,7 +26,7 @@ export const withRetry = async (operation, name) => {
 async function getUsersToSchedule() {
   try {
     return await db("stir_outreach_dashboard")
-      .select("user_id", "username", "name", "business_email")
+      .select("user_id", "username", "name", "business_email", "poc", "poc_email_address")
       .where("first_email_status", "yet_to_schedule")
       .limit(10);
   } catch (error) {
@@ -80,7 +80,6 @@ async function getUserPostsAndBio(userId, index) {
 export async function prepareRecipients() {
   try {
     const usersToSchedule = await getUsersToSchedule();
-
     const recipients = await Promise.all(
       usersToSchedule.map(async (user, index) => {
         const userPosts = await getUserPostsAndBio(user.user_id, index);
@@ -98,13 +97,15 @@ export async function prepareRecipients() {
         );
 
         return {
+          poc: user.poc,
           email: user.business_email,
           firstName: dataUsername, // Using username from data.js
-          snippet1,
-          snippet2,
+          snippet1 : snippet1,
+          snippet2 : snippet2,
         };
       })
     );
+    console.log({recipients})
     return recipients;
   } catch (error) {
     console.error("Error preparing recipients:", error);
@@ -112,62 +113,6 @@ export async function prepareRecipients() {
   }
 }
 
-// // Function to get user's posts and bio
-// async function getUserPostsAndBio(userId) {
-//   try {
-//     return await db("insta_users as u")
-//       .select([
-//         "u.user_id",
-//         "u.username",
-//         "u.biography",
-//         "p.caption",
-//         "p.taken_at",
-//       ])
-//       .leftJoin("insta_posts as p", "u.user_id", "p.user_id")
-//       .where("u.user_id", 111)
-//       .orderBy("p.taken_at", "desc")
-//       .limit(4);
-//   } catch (error) {
-//     console.error("Error fetching user posts and bio:", error);
-//     throw error;
-//   }
-// }
-
-// export async function prepareRecipients() {
-//   try {
-//     // Get users who need emails scheduled
-//     const usersToSchedule = await getUsersToSchedule();
-
-//     // Prepare recipients array
-//     const recipients = await Promise.all(
-//       usersToSchedule.map(async (user) => {
-//         // Get user's posts and bio
-//         const userPosts = await getUserPostsAndBio(user.user_id);
-
-//         // Extract captions from posts
-//         const captions = userPosts.map((post) => post.caption).filter(Boolean);
-
-//         const bio = userPosts[0]?.biography || "";
-//         const { snippet1, snippet2 } = await generateEmailSnippets(
-//           user.username,
-//           user.business_email,
-//           captions,
-//           bio
-//         );
-//         return {
-//           email: user.business_email,
-//           firstName: user.username, // Using username instead of firstName
-//           snippet1,
-//           snippet2,
-//         };
-//       })
-//     );
-//     return recipients;
-//   } catch (error) {
-//     console.error("Error preparing recipients:", error);
-//     throw error;
-//   }
-// }
 
 export async function createNewCampaign() {
   return await withRetry(async () => {
@@ -262,14 +207,15 @@ export const addLeadsToCampaign = async (campaignId) => {
   try {
     // Get recipients from database
     const recipients = await prepareRecipients();
+    console.log({addLeads : recipients})
     const validLeads = recipients
-      .filter((r) => validateEmail(r.email))
-      .map((r) => prepareLead(r));
-
-    console.log({ validLeads: JSON.stringify(validLeads) });
+    .filter((r) => validateEmail(r.email))
+    .map((r) => prepareLead(r));
+    
     if (validLeads.length === 0) {
       throw new Error("No valid leads to add to campaign");
     }
+    console.log(validLeads)
 
     const response = await withRetry(async () => {
       const api = createAxiosInstance();
@@ -307,11 +253,13 @@ export const addLeadsToCampaign = async (campaignId) => {
 
 export const createCampaignSequence = async (campaignId) => {
   const recipients = await prepareRecipients();
-
+console.log({recipients})
   return await withRetry(async () => {
     const api = createAxiosInstance();
     const sequenceVariants = await Promise.all(
+      
       recipients.map(async (recipient, index) => ({
+      
         subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
         email_body: await generateEmailBody({
           ...recipient,
@@ -321,6 +269,8 @@ export const createCampaignSequence = async (campaignId) => {
         variant_label: `Variant_${index + 1}`,
       }))
     );
+console.log("sequence varients")
+    console.log({sequenceVariants})
 
     const sequencePayload = {
       sequences: [

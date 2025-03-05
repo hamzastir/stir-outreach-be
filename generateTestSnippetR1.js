@@ -1,44 +1,16 @@
 import dotenv from "dotenv";
 import OpenAI from "openai";
-import { db } from "../db/primaryDb.js";
 dotenv.config();
 
 const openai = new OpenAI({
   baseURL: "https://api.deepseek.com",
   apiKey: process.env.DEEPSEEK_API_KEY,
 });
-async function getTopInfluencers() {
+
+export async function generateEmailSnippetsR1(username, captions, bio) {
   try {
-    const influencers = await db("influencer_onboarded")
-      .select("handle")
-      .where("onboard_completed", true)
-      .andWhere("onboarded_at", ">=", db.raw("NOW() - INTERVAL '15 days'"))
-      .orderBy("total_audience", "desc") // Sorting by audience size
-      .limit(2); // Fetch top 2 influencers
-
-    if (influencers.length === 0) {
-      return ""; // Return empty if no influencers are found
-    }
-
-    // Extract handles and format the message
-    const handles = influencers.map((i) => `@${i.handle}`);
-    const firstTwo = handles.join(", ");
-
-    const numbers = [20, 21, 22, 23, 26, 27, 28];
-    const randomNumber = numbers[Math.floor(Math.random() * numbers.length)];
-
-    return `${firstTwo} + ${randomNumber} others have recently got their exclusive access to Stir!`;
-  } catch (error) {
-    console.error("Error fetching top influencers:", error);
-    return "";
-  }
-}
-
-
-async function generateEmailSnippets(username, email, captions, bio) {
-  try {
-    const prompt1 = `
-     Generate only the 2-3 line personalized message for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human.
+    const prompt = 
+`Generate only the 2-3 line personalized message for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human.
 
 Input:
   - Name: ${username}
@@ -75,14 +47,15 @@ Only return the 2-3 line personalized message. No greetings, sign-offs, or extra
 
     const response = await openai.chat.completions.create({
       model: "deepseek-reasoner",
-      messages: [{ role: "user", content: prompt1 }],
+      messages: [{ role: "user", content: prompt }],
     });
 
-    const dbResult = await getTopInfluencers();
+    // Get both reasoning and final content
+    const content = response.choices[0]?.message?.content;
 
+    // You can choose to return both or just the content
     return {
-      snippet1: response.choices[0]?.message?.content.trim() || "",
-      snippet2: dbResult,
+      snippet: content?.trim() || "",
     };
   } catch (error) {
     console.error("Error generating email snippets:", error);
@@ -90,4 +63,4 @@ Only return the 2-3 line personalized message. No greetings, sign-offs, or extra
   }
 }
 
-export default generateEmailSnippets;
+export default generateEmailSnippetsR1;

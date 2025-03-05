@@ -117,14 +117,15 @@ app.post("/api/calendly", (req, res) => {
   // if (!globalCampaignId) {
   //   return res.status(400).json({ error: "No active campaign found" });
   // }
-  
+  console.log("Calendly api call!!")
   return handleCalendlyClick(req, res, 1611619);
 });
 app.post("/api/onboarding", (req, res) => {
   // if (!globalCampaignId) {
   //   return res.status(400).json({ error: "No active campaign found" });
   // }
-  
+  console.log("Onboarding api call!!")
+
   return handleOnboardingClick(req, res, 1611619);
 });
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
