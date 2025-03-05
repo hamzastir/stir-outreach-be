@@ -11,6 +11,7 @@ export const handleCalendlyClick = async (req, res, campaignId) => {
     }
 
     // Update database
+    console.log("DB is updating for calendly click for" + name);
     const updateResult = await db("stir_outreach_dashboard")
       .where("business_email", email)
       .update({
@@ -27,6 +28,7 @@ export const handleCalendlyClick = async (req, res, campaignId) => {
         error: "No matching record found with the provided email",
       });
     }
+    console.log("DB updated sucessfully and calendly link clicked");
     console.group(updateResult);
     res.status(200).json({
       message: "Onboarding link clicked",
