@@ -4,6 +4,15 @@ import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
 import { data } from "../../data.js";
+
+// Cache for storing recipients
+let cachedRecipients = null;
+const pocEmailAccountMapping = {
+  "saif@createstir.com": 5940901,
+  "yug@createstir.com": 5909762,
+  "akshat@createstir.com": 5916763,
+};
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const withRetry = async (operation, name) => {
@@ -23,21 +32,31 @@ export const withRetry = async (operation, name) => {
     }
   }
 };
+
 async function getUsersToSchedule() {
   try {
-    return await db("stir_outreach_dashboard")
-      .select("user_id", "username", "name", "business_email", "poc", "poc_email_address")
+    const users = await db("stir_outreach_dashboard")
+      .select(
+        "user_id",
+        "username",
+        "name",
+        "business_email",
+        "poc",
+        "poc_email_address"
+      )
       .where("first_email_status", "yet_to_schedule")
       .limit(10);
+
+    console.log("Users fetched from database:", users);
+    return users;
   } catch (error) {
     console.error("Error fetching users to schedule:", error);
     throw error;
   }
 }
-// Modified getUserPostsAndBio to return data.json content for any userId
+
 async function getUserPostsAndBio(userId, index) {
   try {
-    // Use data entries cyclically
     const dataIndex = index % data.length;
     const userData = data[dataIndex];
 
@@ -78,15 +97,27 @@ async function getUserPostsAndBio(userId, index) {
 }
 
 export async function prepareRecipients() {
+  if (cachedRecipients) {
+    console.log("Using cached recipients:", cachedRecipients);
+    return cachedRecipients;
+  }
+
   try {
     const usersToSchedule = await getUsersToSchedule();
+    console.log("Users to schedule:", usersToSchedule);
+
+    if (!usersToSchedule || usersToSchedule.length === 0) {
+      console.log("No users found to schedule");
+      return [];
+    }
+
     const recipients = await Promise.all(
       usersToSchedule.map(async (user, index) => {
+        console.log(`Processing user ${index}:`, user);
+
         const userPosts = await getUserPostsAndBio(user.user_id, index);
         const captions = userPosts.map((post) => post.caption);
         const bio = userPosts[0]?.biography || "";
-
-        // Use username from data.js instead of database
         const dataUsername = userPosts[0].username;
 
         const { snippet1, snippet2 } = await generateEmailSnippets(
@@ -98,21 +129,23 @@ export async function prepareRecipients() {
 
         return {
           poc: user.poc,
+          poc_email: user.poc_email_address,
           email: user.business_email,
-          firstName: dataUsername, // Using username from data.js
-          snippet1 : snippet1,
-          snippet2 : snippet2,
+          firstName: dataUsername,
+          snippet1: snippet1,
+          snippet2: snippet2,
         };
       })
     );
-    console.log({recipients})
+
+    console.log("Final recipients:", recipients);
+    cachedRecipients = recipients;
     return recipients;
   } catch (error) {
     console.error("Error preparing recipients:", error);
     throw error;
   }
 }
-
 
 export async function createNewCampaign() {
   return await withRetry(async () => {
@@ -131,14 +164,14 @@ export async function addEmailAccountToCampaign(campaignId) {
   return await withRetry(async () => {
     const api = createAxiosInstance();
     const data = {
-      email_account_ids: [5940901], // Using constant email account ID
+      email_account_ids: Object.values(pocEmailAccountMapping),
     };
 
     const response = await api.post(
       `campaigns/${campaignId}/email-accounts`,
       data
     );
-    console.log("✅ Email account added to campaign:", response.data);
+    console.log("✅ Email accounts added to campaign:", response.data);
     return response.data;
   }, "addEmailAccountToCampaign");
 }
@@ -187,35 +220,34 @@ export const updateCampaignSchedule = async (campaignId) => {
     return response.data;
   }, "updateCampaignSchedule");
 };
+
 const validateEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-const prepareLead = (recipient) => {
-  return {
-    email: recipient.email,
-    first_name: recipient.firstName,
-    custom_fields: {
-      snippet1: recipient.snippet1,
-      snippet2: recipient.snippet2,
-    },
-  };
-};
-
 export const addLeadsToCampaign = async (campaignId) => {
   try {
-    // Get recipients from database
     const recipients = await prepareRecipients();
-    console.log({addLeads : recipients})
+    console.log("Recipients for adding leads:", recipients);
+
     const validLeads = recipients
-    .filter((r) => validateEmail(r.email))
-    .map((r) => prepareLead(r));
-    
+      .filter((r) => validateEmail(r.email))
+      .map((recipient) => ({
+        email: recipient.email,
+        first_name: recipient.firstName,
+        custom_fields: {
+          snippet1: recipient.snippet1,
+          snippet2: recipient.snippet2,
+          poc_email: recipient.poc_email, // Optional
+        },
+      }));
+
     if (validLeads.length === 0) {
       throw new Error("No valid leads to add to campaign");
     }
-    console.log(validLeads)
+
+    console.log("Sending validated leads:", validLeads);
 
     const response = await withRetry(async () => {
       const api = createAxiosInstance();
@@ -224,27 +256,25 @@ export const addLeadsToCampaign = async (campaignId) => {
         settings: {
           ignore_global_block_list: true,
           ignore_unsubscribe_list: false,
+          ignore_duplicate_leads_in_other_campaign: false,
         },
       });
-
       console.log("✅ Leads Added Successfully:", response.data);
       return response.data;
     }, "addLeadsToCampaign");
 
-    // Update the first_email_status to "scheduled" for the processed emails
-    await Promise.all(
-      validLeads.map(async (lead) => {
-        await db("stir_outreach_dashboard")
-          .where("business_email", lead.email)
-          .update({
-            first_email_status: "scheduled"
-          });
-      })
-    );
+    // Extract the emails that were successfully scheduled
+    const scheduledEmails = validLeads.map((lead) => lead.email);
 
-    console.log("✅ Updated first_email_status to scheduled for processed leads");
+    if (scheduledEmails.length > 0) {
+      await db("stir_outreach_dashboard")
+        .whereIn("business_email", scheduledEmails)
+        .update({ first_email_status: "scheduled" });
+
+      console.log("✅ Updated first_email_status to 'scheduled' in DB");
+    }
+
     return response;
-
   } catch (error) {
     console.error("Error in addLeadsToCampaign:", error);
     throw error;
@@ -252,43 +282,51 @@ export const addLeadsToCampaign = async (campaignId) => {
 };
 
 export const createCampaignSequence = async (campaignId) => {
-  const recipients = await prepareRecipients();
-console.log({recipients})
-  return await withRetry(async () => {
-    const api = createAxiosInstance();
-    const sequenceVariants = await Promise.all(
-      
-      recipients.map(async (recipient, index) => ({
-      
-        subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
-        email_body: await generateEmailBody({
-          ...recipient,
-          snippet1: recipient.snippet1,
-          snippet2: recipient.snippet2,
-        }),
-        variant_label: `Variant_${index + 1}`,
-      }))
-    );
-console.log("sequence varients")
-    console.log({sequenceVariants})
+  try {
+    const recipients = await prepareRecipients();
+    console.log("Recipients for sequence creation:", recipients);
 
-    const sequencePayload = {
-      sequences: [
-        {
-          seq_number: 1,
-          seq_delay_details: { delay_in_days: 0 },
-          seq_variants: sequenceVariants,
-        },
-      ],
-    };
+    if (!recipients || recipients.length === 0) {
+      throw new Error("No recipients found to create campaign sequence");
+    }
 
-    const response = await api.post(
-      `campaigns/${campaignId}/sequences`,
-      sequencePayload
-    );
-    console.log("✅ Campaign Sequence Created Successfully:", response.data);
-    return response.data;
-  }, "createCampaignSequence");
+    return await withRetry(async () => {
+      const api = createAxiosInstance();
+      const sequenceVariants = await Promise.all(
+        recipients.map(async (recipient, index) => ({
+          subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
+          email_body: await generateEmailBody({
+            ...recipient,
+            snippet1: recipient.snippet1,
+            snippet2: recipient.snippet2,
+          }),
+          variant_label: `Variant_${index + 1}`,
+        }))
+      );
+
+      console.log("Sequence variants created:", sequenceVariants);
+
+      const sequencePayload = {
+        sequences: [
+          {
+            seq_number: 1,
+            seq_delay_details: { delay_in_days: 0 },
+            seq_variants: sequenceVariants,
+          },
+        ],
+      };
+
+      const response = await api.post(
+        `campaigns/${campaignId}/sequences`,
+        sequencePayload
+      );
+      console.log("✅ Campaign Sequence Created Successfully:", response.data);
+      return response.data;
+    }, "createCampaignSequence");
+  } catch (error) {
+    console.error("Error in createCampaignSequence:", error);
+    throw error;
+  }
 };
 
 export const startCampaign = async (campaignId) => {
