@@ -17,7 +17,7 @@ import { handleCalendlyClick, handleOnboardingClick } from "./src/utility/calend
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from './src/routes/users.js'
 import instaUserRoutes from './src/routes/insta-users.js'
-
+import dashboardRoutes from './src/routes/dashboard.js'
 dotenv.config();
 const app = express();
 const router = express.Router(); // Add router definition
@@ -131,7 +131,7 @@ app.post("/api/onboarding", (req, res) => {
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes); 
 app.use("/api/insta-users", instaUserRoutes); 
-
+app.use("/api/dashboard", dashboardRoutes);
 // Routes
 app.get("/run", async (req, res) => {
   try {

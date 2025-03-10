@@ -4,11 +4,11 @@ import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
 import { data } from "../../data.js";
-
+import fs from "fs/promises"; // For promise-based file operations
 // Cache for storing recipients
 let cachedRecipients = null;
 const pocEmailAccountMapping = {
-  "saif@createstir.com": 5940901,
+  // "saif@createstir.com": 5940901,
   "yug@createstir.com": 5909762,
   "akshat@createstir.com": 5916763,
 };
@@ -292,6 +292,7 @@ export const createCampaignSequence = async (campaignId) => {
 
     return await withRetry(async () => {
       const api = createAxiosInstance();
+  
       const sequenceVariants = await Promise.all(
         recipients.map(async (recipient, index) => ({
           subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,

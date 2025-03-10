@@ -7,21 +7,32 @@ const openai = new OpenAI({
   baseURL: "https://api.deepseek.com",
   apiKey: process.env.DEEPSEEK_API_KEY,
 });
+function sanitizeText(text) {
+  // Remove markdown formatting
+  text = text.replace(/\*\*(.*?)\*\*/g, '$1')   // bold
+             .replace(/\*(.*?)\*/g, '$1')       // italic
+             .replace(/__(.*?)__/g, '$1')       // alternative bold
+             .replace(/_(.*?)_/g, '$1');        // alternative italic
+  
+  return text.trim();
+}
 async function getTopInfluencers() {
   try {
-    const influencers = await db("influencer_onboarded")
-      .select("handle")
-      .where("onboard_completed", true)
-      .andWhere("onboarded_at", ">=", db.raw("NOW() - INTERVAL '15 days'"))
-      .orderBy("total_audience", "desc") // Sorting by audience size
-      .limit(2); // Fetch top 2 influencers
-
-    if (influencers.length === 0) {
-      return ""; // Return empty if no influencers are found
+    const influencers = await db.raw(`
+      SELECT handle 
+      FROM influencer_onboarded
+      WHERE onboard_completed = true 
+      AND verified_by_admin = true
+      AND onboarded_at >= NOW() - INTERVAL '15 days'
+      ORDER BY total_audience DESC
+      LIMIT 2;
+    `);
+    
+    if (!influencers?.rows || influencers.rows.length === 0) {
+      return ""; 
     }
 
-    // Extract handles and format the message
-    const handles = influencers.map((i) => `@${i.handle}`);
+    const handles = influencers.rows.map((i) => `@${i.handle}`);
     const firstTwo = handles.join(", ");
 
     const numbers = [20, 21, 22, 23, 26, 27, 28];
@@ -36,7 +47,11 @@ async function getTopInfluencers() {
 
 async function generateEmailSnippets(username, email, captions, bio) {
   try {
-    const prompt1 = `Generate only the 2-3 line [Personalised message] for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human.
+    if (!username || !captions || !bio) {
+      throw new Error("Missing required parameters");
+    }
+
+    const prompt1 = `Generate only the 2-3 line [Personalised message] for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human not written by AI.
 
 Reference mail:
 
@@ -46,45 +61,40 @@ Hey @username,
 
 We’re building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases.
 
-
 What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.
 I’d love to hear your thoughts and see if this is something you’d like to explore (add spintax).
 
 No pressure (add spintax)—feel free to reply to this email or set up a quick call here: calendly.com/stir. Or if you’re ready to dive in, you can also onboard here: https://createstir.com/onboard.
 
-
 Viva cinema!
-Yug
+Yug Dave
 PS: @filmtvrate, @cinephile.sphere and + 23 others have recently joined!
 
 Input:
-  - Name: ${username}
-  - Bio: "${bio}"
-  - Captions from last 4 posts: "${captions}"
-
+  - Name, Bio and 5 captions would be provided below
 
 Rules:
 
-Voice & Differentiation: Reference their unique style (e.g., "unpacking haunting beauty," "bridging classic/avant-garde") using their bio/captions. Avoid generic praise.
+Voice & Differentiation: Reference their unique content creation style using their bio/captions. Avoid generic praise.
 
-Tone: Use conversational phrases (e.g., "Your feed feels like…", "I’ve been struck by how…", “It’s great to see…”) and avoid polished/salesy language.
+Tone: Use conversational phrases (e.g., "Your feed feels like…", "I’ve been struck by how…", “It’s great to see…”) and avoid polished/salesy language. Make it sound like it's coming from human, not AI. 
 
-Flow: Refer the mail structure shared above and maintain a good arc and flow to the personalised message part so that it’s easy to read and connects well with the intended influencer.
+Flow: Refer the mail structure shared above and maintain a good story arc and flow to the personalised message section so that it’s easy to read and connects well with the intended influencer.
 
-Plain text: The output should be in plain text; no bold or italics, no quotes
-
+Plain text: you should not italicize or bold things. A response should be plain text as formatting stuff is a spam signal
 Structure:
 
-Hook: Relatable observation about their niche or storytelling approach.
+Ending note: Do not mention why this influencer might be a good fit for Stir or even for filmmakers. Keep it raw and not salesy.
 
-Depth: Highlight their ability to spark conversation or elevate underappreciated work.
+Depth: Highlight their ability to spark conversation if you find such elements in their captions or highlight how they are elevating underappreciated work if they are spotlighting indie films. Be crafty about it, don’t make it generic.
 
 Length: Personalised message should sum up in max 3-4 sentences. 
+
 Avoid:
 
-Mentions of specific post from their feed unless critical to their niche.
+Avoid mentions of specific post from their feed unless critical to their niche.
 
-External links, bio handles of other people (e.g., @photomonie), jargon, or repetitive phrasing.
+Avoid mentions of external links, bio handles of other people, jargon, or repetitive phrasing.
 
 
 Example Input for the cinemonie:
@@ -100,27 +110,40 @@ Example Input for the cinemonie:
 
 Example Output for thecinemonie: 
 
-
-"Your feed feels like a love letter to cinema’s hidden layers—the way you spotlight Kobayashi’s quiet rage or Lynch’s hypnotic unease turns every post into a conversation starter. It’s that knack for unearthing raw, unsung artistry that makes me think filmmakers on Stir would jump to collaborate with your vision."
+“Your feed feels like a curated journey through cinematic history, from Deren to Lynch and beyond. I’ve been struck by how you showcase not just well-known films, but also works like The Devil's Envoys—elevating often underappreciated gems. It's great to see your passion for film.”
 
 Output Format:
-Only return the 2-3 line [Personalised message]. No greetings, sign-offs, or extra text.`;
+Only return the 2-3 line [Personalised message] in plain text. No greetings, sign-offs, or extra text.
 
-    const response = await openai.chat.completions.create({
+Influencer Data:
+Input:
+  - Name: ${username}
+  - Bio: "${bio}"
+  - Captions from last 4 posts: "${captions}"`; // Rest of the prompt remains the same
+
+    const aiResponse = await openai.chat.completions.create({
       model: "deepseek-reasoner",
       messages: [{ role: "user", content: prompt1 }],
+      temperature: 0.7,
+      max_tokens: 200,
     });
 
+    // Second snippet - Top influencers
     const dbResult = await getTopInfluencers();
 
-    return {
-      snippet1: response.choices[0]?.message?.content.trim() || "",
-      snippet2: dbResult,
+    const response = {
+      snippet1: sanitizeText(aiResponse.choices[0].message.content.trim()),
+      snippet2: dbResult
     };
+
+
+    return response;
+
   } catch (error) {
     console.error("Error generating email snippets:", error);
     throw error;
   }
 }
+
 
 export default generateEmailSnippets;

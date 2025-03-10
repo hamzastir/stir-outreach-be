@@ -9,8 +9,6 @@ const app = express();
 const API_HOST = "instagram-scraper-api2.p.rapidapi.com";
 const port = 9999;
 
-// Function to process a single username
-// Function to process a single username
 async function processUsername(username) {
   try {
     console.log(`Processing username: ${username}`);

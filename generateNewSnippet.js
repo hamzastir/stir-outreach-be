@@ -1,93 +1,100 @@
-import fs from "fs";
-import generateEmailSnippetsR1 from "./generateTestSnippetR1.js";
+import dotenv from "dotenv";
+import OpenAI from "openai";
+dotenv.config();
 
-async function processExistingData() {
+const openai = new OpenAI({
+  baseURL: "https://api.deepseek.com",
+  apiKey: process.env.DEEPSEEK_API_KEY,
+});
+
+async function generateEmailSnippets(username, captions, bio) {
   try {
-    console.log('Starting to read output.json...');
-    const rawData = fs.readFileSync('output.json', 'utf8');
-    const existingData = JSON.parse(rawData);
-    console.log(`Successfully read data for ${existingData.length} entries`);
+    if (!username || !captions || !bio) {
+      throw new Error("Missing required parameters");
+    }
 
-    // Process each entry in the existing data
-    console.log('Starting to process entries...');
-    const updatedData = await Promise.all(
-      existingData.map(async (entry, index) => {
-        try {
-          console.log(`\nProcessing entry ${index + 1}/${existingData.length} - Username: ${entry.username}`);
-          
-          // Extract existing data
-          const {
-            username,
-            biography,
-            caption1,
-            caption2,
-            caption3,
-            caption4,
-            caption5
-          } = entry;
+    const prompt1 = `Generate only the 2-3 line [Personalised message] for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human not written by AI.
 
-          // Collect captions into an array
-          const captions = [caption1, caption2, caption3, caption4, caption5]
-            .filter(caption => caption); // Remove empty captions
-          
-          console.log(`Found ${captions.length} valid captions for ${username}`);
-          console.log('Biography length:', biography?.length || 0);
+Reference mail:
 
-          console.log(`Generating new snippet for ${username}...`);
-          // Generate new snippet using existing data
-          const r1Result = await generateEmailSnippetsR1(username, captions, biography);
-          console.log(`Successfully generated new snippet for ${username}`);
+Hey @username,
 
-          // Return existing data with new field
-          const updatedEntry = {
-            ...entry,
-            'deepseek-r1-new': r1Result.snippet
-          };
+[Personalised message] 
 
-          console.log(`Completed processing for ${username}\n`);
-          return updatedEntry;
+We’re building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases.
 
-        } catch (error) {
-          console.error(`\nError processing entry for ${entry.username}:`, error);
-          console.error('Error details:', error.message);
-          console.error('Stack trace:', error.stack);
-          return entry; // Return original entry if processing fails
-        }
-      })
-    );
+What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.
+I’d love to hear your thoughts and see if this is something you’d like to explore (add spintax).
 
-    console.log('\nAll entries processed. Writing updated data to file...');
-    
-    // Write updated data back to file
-    fs.writeFileSync(
-      'output.json',
-      JSON.stringify(updatedData, null, 2),
-      'utf8'
-    );
+No pressure (add spintax)—feel free to reply to this email or set up a quick call here: calendly.com/stir. Or if you’re ready to dive in, you can also onboard here: https://createstir.com/onboard.
 
-    console.log('Successfully wrote updated data to output.json');
-    
-    // Log some statistics
-    const successfulUpdates = updatedData.filter(entry => entry['deepseek-r1-new']).length;
-    console.log('\nProcessing Summary:');
-    console.log(`Total entries processed: ${updatedData.length}`);
-    console.log(`Successful updates: ${successfulUpdates}`);
-    console.log(`Failed updates: ${updatedData.length - successfulUpdates}`);
+Viva cinema!
+Yug Dave
+PS: @filmtvrate, @cinephile.sphere and + 23 others have recently joined!
 
-    return updatedData;
+Input:
+  - Name, Bio and 5 captions would be provided below
+
+Rules:
+
+Voice & Differentiation: Reference their unique content creation style using their bio/captions. Avoid generic praise.
+
+Tone: Use conversational phrases (e.g., "Your feed feels like…", "I’ve been struck by how…", “It’s great to see…”) and avoid polished/salesy language. Make it sound like it's coming from human, not AI. 
+
+Flow: Refer the mail structure shared above and maintain a good story arc and flow to the personalised message section so that it’s easy to read and connects well with the intended influencer.
+
+Plain text: you should not italicize or bold things. A response should be plain text as formatting stuff is a spam signal
+Structure:
+
+Ending note: Do not mention why this influencer might be a good fit for Stir or even for filmmakers. Keep it raw and not salesy.
+
+Depth: Highlight their ability to spark conversation if you find such elements in their captions or highlight how they are elevating underappreciated work if they are spotlighting indie films. Be crafty about it, don’t make it generic.
+
+Length: Personalised message should sum up in max 3-4 sentences. 
+
+Avoid:
+
+Avoid mentions of specific post from their feed unless critical to their niche.
+
+Avoid mentions of external links, bio handles of other people, jargon, or repetitive phrasing.
+
+
+Example Input for the cinemonie:
+"username": "thecinemonie",
+    "biography": "Founder: @onur_sumer \n   • Photography | @thephotomonie \nLetterboxd:",
+    "caption1": "Meshes of the Afternoon (1943)\n\nDirectors: Maya Deren, Alexander Hammid",
+    "caption2": "Rooms of David Lynch\n\n1 • Twin Peaks: Fire Walk with Me (1992)\n2 • Eraserhead (1977)\n3 • Blue Velvet (1986)\n4 • Dune (1984)\n5 • Rabbits (2002)\n6 • Lost Highway (1997)\n7 • Mulholland Drive (2001)\n8 • The Elephant Man (1980)\n9 • Wild at Heart (1990)\n10 • Inland Empire (2006)",
+    "caption3": "Harakiri (1962)\n\nDirector: Masaki Kobayashi\nActor: Tatsuya Nakadai",
+    "caption4": "Thieves Like Us (1974) & Do the Right Thing (1989)",
+    "caption5": "The Devil's Envoys (1942)\n\nDirector: Marcel Carné",
+
+
+
+Example Output for thecinemonie: 
+
+“Your feed feels like a curated journey through cinematic history, from Deren to Lynch and beyond. I’ve been struck by how you showcase not just well-known films, but also works like The Devil's Envoys—elevating often underappreciated gems. It's great to see your passion for film.”
+
+Output Format:
+Only return the 2-3 line [Personalised message] in plain text. No greetings, sign-offs, or extra text.
+
+Influencer Data:
+Input:
+  - Name: ${username}
+  - Bio: "${bio}"
+  - Captions from last 4 posts: "${captions}`;
+
+    const aiResponse = await openai.chat.completions.create({
+      model: "deepseek-reasoner",
+      messages: [{ role: "user", content: prompt1 }],
+      temperature: 0.7,
+      max_tokens: 200,
+    });
+
+    return aiResponse.choices[0].message.content.trim();
   } catch (error) {
-    console.error('\nFatal error processing file:', error);
-    console.error('Error details:', error.message);
-    console.error('Stack trace:', error.stack);
+    console.error("Error generating email snippets:", error);
     throw error;
   }
 }
 
-// Call the function with additional logging
-console.log('Starting the process...');
-processExistingData()
-  .then(() => console.log('\nProcess completed successfully'))
-  .catch(error => {
-    console.error('\nProcess failed:', error);
-    process.exit(1);
-  });
+export default generateEmailSnippets;
