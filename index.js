@@ -13,16 +13,24 @@ import {
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
-import { handleCalendlyClick, handleOnboardingClick } from "./src/utility/calendlyController.js";
+import {
+  handleCalendlyClick,
+  handleOnboardingClick,
+} from "./src/utility/calendlyController.js";
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
-import userRoutes from './src/routes/users.js'
-import instaUserRoutes from './src/routes/insta-users.js'
-import dashboardRoutes from './src/routes/dashboard.js'
+import userRoutes from "./src/routes/users.js";
+import instaUserRoutes from "./src/routes/insta-users.js";
+import dashboardRoutes from "./src/routes/dashboard.js";
 dotenv.config();
 const app = express();
 const router = express.Router(); // Add router definition
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    credentials: true,
+  })
+);
 app.use(express.json());
 console.log({ config });
 
@@ -37,7 +45,7 @@ const execute = async () => {
 
     // Create new campaign
     const campaignId = await createNewCampaign();
-    
+
     // Store campaignId globally
     globalCampaignId = campaignId;
     console.log(`Campaign created with ID: ${globalCampaignId}`);
@@ -62,7 +70,7 @@ const execute = async () => {
       {
         name: "Add Leads to Campaign",
         fn: () => addLeadsToCampaign(campaignId),
-      }, 
+      },
       {
         name: "Create Campaign Sequence",
         fn: () => createCampaignSequence(campaignId),
@@ -82,7 +90,7 @@ const execute = async () => {
     console.log(
       "\n✅ Campaign Setup Complete! Emails will be sent according to schedule."
     );
-    
+
     return campaignId;
   } catch (error) {
     console.error("\n❌ Campaign Setup Failed:", error.message);
@@ -99,12 +107,11 @@ const execute = async () => {
 const runCampaign = async () => {
   try {
     const campaignId = await execute();
-    
 
     console.log(
       "\n✅ Campaign execution completed. Use API endpoints to check statistics."
     );
-    
+
     return campaignId;
   } catch (error) {
     console.error("Campaign execution failed:", error.message);
@@ -117,20 +124,20 @@ app.post("/api/calendly", (req, res) => {
   // if (!globalCampaignId) {
   //   return res.status(400).json({ error: "No active campaign found" });
   // }
-  console.log("Calendly api call!!")
+  console.log("Calendly api call!!");
   return handleCalendlyClick(req, res, globalCampaignId);
 });
 app.post("/api/onboarding", (req, res) => {
   // if (!globalCampaignId) {
   //   return res.status(400).json({ error: "No active campaign found" });
   // }
-  console.log("Onboarding api call!!")
+  console.log("Onboarding api call!!");
 
   return handleOnboardingClick(req, res, globalCampaignId);
 });
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
-app.use("/api/outreach", userRoutes); 
-app.use("/api/insta-users", instaUserRoutes); 
+app.use("/api/outreach", userRoutes);
+app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 // Routes
 app.get("/run", async (req, res) => {
@@ -138,9 +145,9 @@ app.get("/run", async (req, res) => {
     const campaignId = await runCampaign();
     await setupSmartLeadWebhook(campaignId);
     console.log("SmartLead webhook setup completed");
-    res.status(200).json({ 
-      message: "Campaign started successfully", 
-      campaignId 
+    res.status(200).json({
+      message: "Campaign started successfully",
+      campaignId,
     });
   } catch (error) {
     res
@@ -149,7 +156,7 @@ app.get("/run", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3007;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   try {

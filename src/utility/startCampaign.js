@@ -42,7 +42,8 @@ async function getUsersToSchedule() {
         "name",
         "business_email",
         "poc",
-        "poc_email_address"
+        "poc_email_address",
+        "campaign_id"
       )
       .where("first_email_status", "yet_to_schedule")
       .limit(10);
@@ -119,7 +120,7 @@ export async function prepareRecipients() {
         const captions = userPosts.map((post) => post.caption);
         const bio = userPosts[0]?.biography || "";
         const dataUsername = userPosts[0].username;
-
+console.log("Generating snippet for  ", dataUsername);
         const { snippet1, snippet2 } = await generateEmailSnippets(
           dataUsername,
           user.business_email,
@@ -128,6 +129,7 @@ export async function prepareRecipients() {
         );
 
         return {
+          campaign_id : user.campaign_id,
           poc: user.poc,
           poc_email: user.poc_email_address,
           email: user.business_email,
@@ -262,6 +264,7 @@ export const addLeadsToCampaign = async (campaignId) => {
       console.log("✅ Leads Added Successfully:", response.data);
       return response.data;
     }, "addLeadsToCampaign");
+    
 
     // Extract the emails that were successfully scheduled
     const scheduledEmails = validLeads.map((lead) => lead.email);
@@ -269,7 +272,7 @@ export const addLeadsToCampaign = async (campaignId) => {
     if (scheduledEmails.length > 0) {
       await db("stir_outreach_dashboard")
         .whereIn("business_email", scheduledEmails)
-        .update({ first_email_status: "scheduled" });
+        .update({ first_email_status: "scheduled", campaign_id: campaignId });
 
       console.log("✅ Updated first_email_status to 'scheduled' in DB");
     }
@@ -292,7 +295,7 @@ export const createCampaignSequence = async (campaignId) => {
 
     return await withRetry(async () => {
       const api = createAxiosInstance();
-  
+
       const sequenceVariants = await Promise.all(
         recipients.map(async (recipient, index) => ({
           subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,

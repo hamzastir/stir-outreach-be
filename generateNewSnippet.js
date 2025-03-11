@@ -13,9 +13,10 @@ async function generateEmailSnippets(username, captions, bio) {
       throw new Error("Missing required parameters");
     }
 
-    const prompt1 = `Generate only the 2-3 line [Personalised message] for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human not written by AI.
-
-Reference mail:
+    const prompt1 = `<SYSTEM INSTRUCTION>
+Generate only the 2-3 line [Personalised message] for an email to a film influencer, using the structure and tone of the example below. Focus on specificity and differentiation while sounding warm and human not written by AI.
+</SYSTEM INSTRUCTION>
+<REFERENCE MAIL>
 
 Hey @username,
 
@@ -31,11 +32,11 @@ No pressure (add spintax)—feel free to reply to this email or set up a quick c
 Viva cinema!
 Yug Dave
 PS: @filmtvrate, @cinephile.sphere and + 23 others have recently joined!
-
-Input:
+</REFERENCE MAIL>
+<INPUT>:
   - Name, Bio and 5 captions would be provided below
-
-Rules:
+</INPUT>
+<RULES>
 
 Voice & Differentiation: Reference their unique content creation style using their bio/captions. Avoid generic praise.
 
@@ -43,7 +44,7 @@ Tone: Use conversational phrases (e.g., "Your feed feels like…", "I’ve been 
 
 Flow: Refer the mail structure shared above and maintain a good story arc and flow to the personalised message section so that it’s easy to read and connects well with the intended influencer.
 
-Plain text: you should not italicize or bold things. A response should be plain text as formatting stuff is a spam signal
+Plain text: you should not italicize or bold things. A response should be plain text as formatting stuff is a spam signal. No markdown formatting should be there like **, __ etc
 Structure:
 
 Ending note: Do not mention why this influencer might be a good fit for Stir or even for filmmakers. Keep it raw and not salesy.
@@ -51,15 +52,16 @@ Ending note: Do not mention why this influencer might be a good fit for Stir or 
 Depth: Highlight their ability to spark conversation if you find such elements in their captions or highlight how they are elevating underappreciated work if they are spotlighting indie films. Be crafty about it, don’t make it generic.
 
 Length: Personalised message should sum up in max 3-4 sentences. 
-
-Avoid:
+</RULES>
+<AVOID>
 
 Avoid mentions of specific post from their feed unless critical to their niche.
 
 Avoid mentions of external links, bio handles of other people, jargon, or repetitive phrasing.
 
+</AVOID>
 
-Example Input for the cinemonie:
+<SAMPLE INPUT>
 "username": "thecinemonie",
     "biography": "Founder: @onur_sumer \n   • Photography | @thephotomonie \nLetterboxd:",
     "caption1": "Meshes of the Afternoon (1943)\n\nDirectors: Maya Deren, Alexander Hammid",
@@ -69,19 +71,24 @@ Example Input for the cinemonie:
     "caption5": "The Devil's Envoys (1942)\n\nDirector: Marcel Carné",
 
 
-
-Example Output for thecinemonie: 
+</SAMPLE INPUT>
+<SAMPLE OUTPUT>
 
 “Your feed feels like a curated journey through cinematic history, from Deren to Lynch and beyond. I’ve been struck by how you showcase not just well-known films, but also works like The Devil's Envoys—elevating often underappreciated gems. It's great to see your passion for film.”
+</SAMPLE OUTPUT>
 
-Output Format:
+<RETURN INSTRUCTION>
 Only return the 2-3 line [Personalised message] in plain text. No greetings, sign-offs, or extra text.
+</RETURN INSTRUCTION>
 
-Influencer Data:
-Input:
+<INPUT>
+  Input:
   - Name: ${username}
   - Bio: "${bio}"
-  - Captions from last 4 posts: "${captions}`;
+  - Captions from last 4 posts: "${captions}
+</INPUT>
+<OUTPUT>
+`;
 
     const aiResponse = await openai.chat.completions.create({
       model: "deepseek-reasoner",

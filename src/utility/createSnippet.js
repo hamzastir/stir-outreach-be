@@ -9,11 +9,12 @@ const openai = new OpenAI({
 });
 function sanitizeText(text) {
   // Remove markdown formatting
-  text = text.replace(/\*\*(.*?)\*\*/g, '$1')   // bold
-             .replace(/\*(.*?)\*/g, '$1')       // italic
-             .replace(/__(.*?)__/g, '$1')       // alternative bold
-             .replace(/_(.*?)_/g, '$1');        // alternative italic
-  
+  text = text
+    .replace(/\*\*(.*?)\*\*/g, "$1") // bold
+    .replace(/\*(.*?)\*/g, "$1") // italic
+    .replace(/__(.*?)__/g, "$1") // alternative bold
+    .replace(/_(.*?)_/g, "$1"); // alternative italic
+
   return text.trim();
 }
 async function getTopInfluencers() {
@@ -27,9 +28,9 @@ async function getTopInfluencers() {
       ORDER BY total_audience DESC
       LIMIT 2;
     `);
-    
+
     if (!influencers?.rows || influencers.rows.length === 0) {
-      return ""; 
+      return "";
     }
 
     const handles = influencers.rows.map((i) => `@${i.handle}`);
@@ -41,7 +42,7 @@ async function getTopInfluencers() {
     return `${firstTwo} + ${randomNumber} others have recently got their exclusive access to Stir!`;
   } catch (error) {
     console.error("Error fetching top influencers:", error);
-    return "";
+    return `@spaceofcenema, @filmtvrate + 23 others have recently got their exclusive access to Stir!`;
   }
 }
 
@@ -110,40 +111,73 @@ Example Input for the cinemonie:
 
 Example Output for thecinemonie: 
 
-“Your feed feels like a curated journey through cinematic history, from Deren to Lynch and beyond. I’ve been struck by how you showcase not just well-known films, but also works like The Devil's Envoys—elevating often underappreciated gems. It's great to see your passion for film.”
+Your feed feels like a curated journey through cinematic history, from Deren to Lynch and beyond. I’ve been struck by how you showcase not just well-known films, but also works like The Devil's Envoys—elevating often underappreciated gems. It's great to see your passion for film.
 
 Output Format:
-Only return the 2-3 line [Personalised message] in plain text. No greetings, sign-offs, or extra text.
+The output should be a plain text response in the following format:
+Only return the 2-3 line [Personalised message] in plain text. No Markdown, No greetings, No sign-offs, and No extra text .
 
 Influencer Data:
 Input:
   - Name: ${username}
   - Bio: "${bio}"
   - Captions from last 4 posts: "${captions}"`; // Rest of the prompt remains the same
+    console.log("deepseek is generating snippet for " + username);
 
-    const aiResponse = await openai.chat.completions.create({
-      model: "deepseek-reasoner",
-      messages: [{ role: "user", content: prompt1 }],
-      temperature: 0.7,
-      max_tokens: 200,
-    });
+    let retries = 3;
+    let aiResponse;
+
+    while (retries > 0) {
+      try {
+        aiResponse = await openai.chat.completions.create({
+          model: "deepseek-reasoner",
+          messages: [{ role: "user", content: prompt1 }],
+        });
+
+        // If successful, break out of the retry loop
+        break;
+      } catch (apiError) {
+        retries--;
+        console.warn(
+          `API call failed, ${retries} retries left. Error: ${apiError.message}`
+        );
+
+        if (retries === 0) {
+          throw apiError; // Re-throw if all retries failed
+        }
+
+        // Wait before retrying (exponential backoff)
+        await new Promise((resolve) =>
+          setTimeout(resolve, (3 - retries) * 2000)
+        );
+      }
+    }
 
     // Second snippet - Top influencers
     const dbResult = await getTopInfluencers();
-
     const response = {
       snippet1: sanitizeText(aiResponse.choices[0].message.content.trim()),
-      snippet2: dbResult
+      snippet2: dbResult,
     };
-
+    console.log({ response });
 
     return response;
-
   } catch (error) {
     console.error("Error generating email snippets:", error);
     throw error;
   }
 }
-
-
+// const dbResponse = await generateEmailSnippets(
+//   "cinemafromthepast",
+//   "email",
+//   [
+//     "This is the best thing you’ll see all day. Guaranteed. 🎵 😭 \n\nCredit : @sandlerspins \nRe-post: @pubity 🔄",
+//     "This is awesome 😄\n@funkstercosplay is a certified legend. 👊 \n\nR/p: @pubity 🔄",
+//     "10 pairs of actors you had no idea were the same age 🤜🤛\n.\nWhich one was the most surprising?\nFollow @cinemafromthepast for more!\n.\nCredits: @the_goodfilms",
+//     "10 pairs of actors you had no idea were the same age 🤜🤛\n.\nWhich one was the most surprising?\nFollow @cinemafromthepast for more!\n.\nCredits: @the_goodfilms",
+//     "Hollywood is in good hands ✨ Here are some talented young actors and actresses to keep an eye on.\n\nWho would you add to this list? 💭\n\n[Via : @goosebumpscinema ]",
+//   ],
+//   "Your one and only cinema guru. \n📬 cinemafromthepast@gmail.com\nNEW Tik Tok Page Below"
+// );
+// console.log(dbResponse);
 export default generateEmailSnippets;

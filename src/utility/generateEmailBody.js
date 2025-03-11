@@ -3,12 +3,13 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const CALENDLY_BASE_URL = "https://www.createstir.com/calendly";
-const ONBOARDING_BASE_URL = "https://createstir.com/onboard";
+const ONBOARDING_BASE_URL = "https://www.createstir.com/onboard";
 
 const generateParameterizedUrls = (recipient) => {
   const params = new URLSearchParams({
     email: recipient.email,
     name: recipient.firstName,
+    // id : recipient.campaign_id
   });
 
   return {
