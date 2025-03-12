@@ -17,7 +17,7 @@ import { processSmartleadWebhook } from "./src/utility/smartleadWebhookControlle
 import userRoutes from "./src/routes/users.js";
 import instaUserRoutes from "./src/routes/insta-users.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
-import {createCalendlyWebhook, handleCalendlyWebhook } from "./src/utility/calendlywebhook.js";
+// import {createCalendlyWebhook, handleCalendlyWebhook } from "./src/utility/calendlywebhook.js";
 dotenv.config();
 const app = express();
 app.use(
@@ -115,13 +115,13 @@ const runCampaign = async () => {
 };
 
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
-app.post("/api/webhook/calendly", handleCalendlyWebhook);
+// app.post("/api/webhook/calendly", handleCalendlyWebhook);
 // app.use("/api/webhooks", createCalendlyWebhook);
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-await createCalendlyWebhook();
-console.log("Calendly webhook setup completed");
+// await createCalendlyWebhook();
+// console.log("Calendly webhook setup completed");
 // Routes
 app.get("/run", async (req, res) => {
   try {

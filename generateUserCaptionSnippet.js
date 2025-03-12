@@ -6,51 +6,50 @@ import path from "path";
 
 const app = express();
 const instagramUsernames = [
-    // "filmprobe",
-    // "cinemafromthepast",
-    // "asiancinemaarchive",
-    // "filmsyoushouldbewatching",
-    // "cineoholic",
-    // "thecinemagroup",
-    // "thecinemagroupnews",
-    // "raindancefilmfestival",
-    // "aliplumb",
-    // "officialuniversalmonsters",
-    // "barbicancentre",
-    // "moviewatchinggirl",
-    // "cine.magician",
-    // "frankfilmclub",
-    "the.vintage.era",
-    "luckyboyreviews"
+   "maismovies",
+  "viralpopculture",
+  "cineocultooficial",
+  "cinemaexcelsiorr",
+  "cinematicpaintings",
+  "allfem",
+  "druscillad",
+  "allietrannn",
+  "blex_media",
+  "cinematicbuzz",
+  "crisepanda",
+  "citandotv",
+  "georgieeisdellmakeup",
+  "purebreak",
+  "mjhiblenart"
   ];
 
 // Path to outreach JSON file
 const outreachFilePath = path.join(process.cwd(), "outreach.json");
 
 // Function to generate email body
-function generateEmailBody(recipient) {
-  if (!recipient.r1snippet) return null;
+// function generateEmailBody(recipient) {
+//   if (!recipient.r1snippet) return null;
   
-  const template = `Hi @${recipient.username}, I'm Yug Dave
+//   const template = `Hi @${recipient.username}, I'm Yug Dave
 
-${recipient.r1snippet}
+// ${recipient.r1snippet}
 
-We're building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases.
+// We're building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases.
 
-What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.
+// What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.
 
-I'd love to hear your thoughts and see if this is something you'd like to explore!
+// I'd love to hear your thoughts and see if this is something you'd like to explore!
 
-No pressure—feel free to reply to this email or set up a quick call here: createstir.com/calendly. Or if you're ready to dive in, you can also onboard here: createstir.com/onboard.
+// No pressure—feel free to reply to this email or set up a quick call here: createstir.com/calendly. Or if you're ready to dive in, you can also onboard here: createstir.com/onboard.
 
-Best,
-Yug Dave
-VP of Stellar Beginnings!
+// Best,
+// Yug Dave
+// VP of Stellar Beginnings!
 
-PS: @spaceofcenema and @filmtvrate others have recently got their exclusive access to Stir!`;
+// PS: @spaceofcenema and @filmtvrate others have recently got their exclusive access to Stir!`;
 
-  return template;
-}
+//   return template;
+// }
 
 // Initialize or repair outreach.json file
 function initOutreachFile() {
@@ -150,7 +149,6 @@ app.get("/api/instagram-data", async (req, res) => {
         const userInfo = {
           username: username,
           biography: userData?.data?.biography || "",
-          bio_email: userData?.data?.biography_email || null,
           public_email: userData?.data?.public_email || null,
           last_five_captions: captions,
         };
@@ -176,46 +174,46 @@ app.get("/api/instagram-data", async (req, res) => {
     }
     
     // Second pass: Generate snippets for all users in a batch
-    if (usersForSnippetGeneration.length > 0) {
-      try {
-        console.log(`🎯 Generating snippets for ${usersForSnippetGeneration.length} users`);
+    // if (usersForSnippetGeneration.length > 0) {
+    //   try {
+    //     console.log(`🎯 Generating snippets for ${usersForSnippetGeneration.length} users`);
         
-        // Generate snippets one by one to avoid issues with the generateEmailSnippets function
-        for (const user of usersForSnippetGeneration) {
-          try {
-            const userIndex = allUsersData.findIndex(u => u.username === user.username);
-            if (userIndex === -1) continue;
+    //     // Generate snippets one by one to avoid issues with the generateEmailSnippets function
+    //     for (const user of usersForSnippetGeneration) {
+    //       try {
+    //         const userIndex = allUsersData.findIndex(u => u.username === user.username);
+    //         if (userIndex === -1) continue;
             
-            console.log(`Generating snippet for ${user.username}...`);
-            // Format captions as a string for the API
-            const captionsText = user.last_five_captions.join('\n\n');
+    //         console.log(`Generating snippet for ${user.username}...`);
+    //         // Format captions as a string for the API
+    //         const captionsText = user.last_five_captions.join('\n\n');
             
-            // Call the function with individual parameters
-            const snippet = await generateEmailSnippets(
-              user.username, 
-              captionsText, 
-              user.biography
-            );
+    //         // Call the function with individual parameters
+    //         const snippet = await generateEmailSnippets(
+    //           user.username, 
+    //           captionsText, 
+    //           user.biography
+    //         );
             
-            if (snippet) {
-              allUsersData[userIndex].r1snippet = snippet;
-              allUsersData[userIndex].emailBody = generateEmailBody(allUsersData[userIndex]);
-              console.log(`📧 Generated snippet and email for ${user.username}`);
+    //         if (snippet) {
+    //           allUsersData[userIndex].r1snippet = snippet;
+    //           allUsersData[userIndex].emailBody = generateEmailBody(allUsersData[userIndex]);
+    //           console.log(`📧 Generated snippet and email for ${user.username}`);
               
-              // Update outreach file with the new data
-              updateOutreachFile(allUsersData[userIndex]);
-            }
-          } catch (error) {
-            console.error(`❌ Error generating snippet for ${user.username}:`, error);
-          }
+    //           // Update outreach file with the new data
+    //           updateOutreachFile(allUsersData[userIndex]);
+    //         }
+    //       } catch (error) {
+    //         console.error(`❌ Error generating snippet for ${user.username}:`, error);
+    //       }
           
-          // Add a small delay between requests
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } catch (batchError) {
-        console.error("❌ Error in snippet generation batch process:", batchError);
-      }
-    }
+    //       // Add a small delay between requests
+    //       await new Promise(resolve => setTimeout(resolve, 500));
+    //     }
+    //   } catch (batchError) {
+    //     console.error("❌ Error in snippet generation batch process:", batchError);
+    //   }
+    // }
     
     console.log('✅ Process completed successfully');
     res.json({ 
