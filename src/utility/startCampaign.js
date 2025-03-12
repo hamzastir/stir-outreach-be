@@ -100,14 +100,14 @@ export async function prepareRecipients() {
         // Use the email from the backend (DB) as primary source
         const userEmail = user.business_email;
         
-        // const { snippet1, snippet2 } = await generateEmailSnippets(
-        //   userData.username,
-        //   userEmail,
-        //   userData.captions,
-        //   userData.biography
-        // );
-        const snippet1 = "snippet 1";
-        const snippet2 = "snippet 2";
+        const { snippet1, snippet2 } = await generateEmailSnippets(
+          userData.username,
+          userEmail,
+          userData.captions,
+          userData.biography
+        );
+        // const snippet1 = "snippet 1";
+        // const snippet2 = "snippet 2";
         return {
           campaign_id: user.campaign_id,
           poc: user.poc,
