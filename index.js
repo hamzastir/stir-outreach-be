@@ -120,14 +120,15 @@ app.post("/api/webhook/calendly", handleCalendlyWebhook);
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+await createCalendlyWebhook();
+console.log("Calendly webhook setup completed");
 // Routes
 app.get("/run", async (req, res) => {
   try {
     const campaignId = await runCampaign();
     await setupSmartLeadWebhook(campaignId);
     console.log("SmartLead webhook setup completed");
-    await createCalendlyWebhook();
-    console.log("Calendly webhook setup completed");
+
 
     res.status(200).json({
       message: "Campaign started successfully",
