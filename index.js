@@ -13,18 +13,13 @@ import {
   validateCampaignSetup,
 } from "./src/utility/startCampaign.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
-import {
-  handleCalendlyClick,
-  handleOnboardingClick,
-} from "./src/utility/calendlyController.js";
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from "./src/routes/users.js";
 import instaUserRoutes from "./src/routes/insta-users.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
+import { calendlyWebhook } from "./src/utility/calendlywebhook.js";
 dotenv.config();
 const app = express();
-const router = express.Router(); // Add router definition
-
 app.use(
   cors({
     origin: "*",
@@ -119,23 +114,9 @@ const runCampaign = async () => {
   }
 };
 
-// Update the Calendly handler to use the global campaignId
-app.post("/api/calendly", (req, res) => {
-  // if (!globalCampaignId) {
-  //   return res.status(400).json({ error: "No active campaign found" });
-  // }
-  console.log("Calendly api call!!");
-  return handleCalendlyClick(req, res, globalCampaignId);
-});
-app.post("/api/onboarding", (req, res) => {
-  // if (!globalCampaignId) {
-  //   return res.status(400).json({ error: "No active campaign found" });
-  // }
-  console.log("Onboarding api call!!");
-
-  return handleOnboardingClick(req, res, globalCampaignId);
-});
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
+app.post("/api/webhook/calendly", calendlyWebhook);
+
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);

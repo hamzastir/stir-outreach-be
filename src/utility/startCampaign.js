@@ -100,18 +100,20 @@ export async function prepareRecipients() {
         // Use the email from the backend (DB) as primary source
         const userEmail = user.business_email;
         
-        const { snippet1, snippet2 } = await generateEmailSnippets(
-          userData.username,
-          userEmail,
-          userData.captions,
-          userData.biography
-        );
+        // const { snippet1, snippet2 } = await generateEmailSnippets(
+        //   userData.username,
+        //   userEmail,
+        //   userData.captions,
+        //   userData.biography
+        // );
+        const snippet1 = "snippet 1";
+        const snippet2 = "snippet 2";
         return {
           campaign_id: user.campaign_id,
           poc: user.poc,
           poc_email: user.poc_email_address,
           email: userEmail,
-          firstName: userData.username, // This should now match the DB username
+          firstName: userData.username, 
           snippet1: snippet1,
           snippet2: snippet2,
         };
@@ -187,7 +189,8 @@ export const updateCampaignSchedule = async (campaignId) => {
     const schedulePayload = {
       timezone: "Asia/Kolkata",
       days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
-      start_hour: "21:00", // 9 PM IST
+      // start_hour: "21:00", // 9 PM IST
+      start_hour : currentTimeFormatted,
       end_hour: "23:59",
       min_time_btw_emails: 3,
       max_new_leads_per_day: 100,

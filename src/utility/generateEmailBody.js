@@ -1,15 +1,26 @@
 // import { uploadTrackingImage } from "./uploadImage.js";
 import dotenv from "dotenv";
+import { db } from "../db/db.js";
+
 dotenv.config();
 
 const CALENDLY_BASE_URL = "https://www.createstir.com/calendly";
 const ONBOARDING_BASE_URL = "https://www.createstir.com/onboard";
+const getCampaignIdByEmail = async (email) => {
+  const result = await db('stir_outreach_dashboard')
+    .select('campaign_id')
+    .where('business_email', email)
+    .first(); // Get a single record
 
-const generateParameterizedUrls = (recipient) => {
+  return result?.campaign_id || null;
+};
+const generateParameterizedUrls = async (recipient) => {
+  const campaignId = await getCampaignIdByEmail(recipient.email);
+
   const params = new URLSearchParams({
     email: recipient.email,
     name: recipient.firstName,
-    // id : recipient.campaign_id
+    id : campaignId || '',
   });
 
   return {
@@ -17,12 +28,12 @@ const generateParameterizedUrls = (recipient) => {
     onboardingUrl: `${ONBOARDING_BASE_URL}?${params.toString()}`,
   };
 };
-
+  
 export const generateEmailBody = async (recipient) => {
   console.log("inside email body");
-  const { calendlyUrl, onboardingUrl } = generateParameterizedUrls(recipient);
+  const { calendlyUrl, onboardingUrl } = await generateParameterizedUrls(recipient);
   console.log({ calendlyUrl, onboardingUrl });
-  console.log("recipient from email : " + recipient);
+  console.log("recipient from email : " + {recipient});
   return `{Hi|Hey|Hello} @${recipient.firstName}, I’m ${recipient.poc}<br>
 ${recipient.snippet1}<br>
   We’re building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
