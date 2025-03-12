@@ -4,6 +4,7 @@ import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
 import { data } from "../../sendemail.js";
+import { db as pdb } from "../db/primaryDb.js";
 
 let cachedRecipients = null;
 const pocEmailAccountMapping = {
@@ -34,6 +35,7 @@ export const withRetry = async (operation, name) => {
 
 async function getUsersToSchedule() {
   try {
+    // Fetch users from stir_outreach_dashboard
     const users = await db("stir_outreach_dashboard")
       .select(
         "user_id",
@@ -48,12 +50,30 @@ async function getUsersToSchedule() {
       .limit(10);
 
     console.log("Users fetched from database:", users);
-    return users;
+
+    if (users.length === 0) return [];
+
+    // Extract usernames from the users
+    const usernames = users.map(user => user.username);
+
+    // Fetch existing usernames from influencer_onboarded in pdb
+    const onboardedUsers = await pdb("influencer_onboarded")
+      .select("handle")
+      .whereIn("handle", usernames);
+
+    const onboardedUsernames = new Set(onboardedUsers.map(user => user.username));
+
+    // Filter users whose username is NOT in influencer_onboarded
+    const filteredUsers = users.filter(user => !onboardedUsernames.has(user.username));
+
+    console.log("Filtered users (not onboarded):", filteredUsers);
+    return filteredUsers;
   } catch (error) {
     console.error("Error fetching users to schedule:", error);
     throw error;
   }
 }
+
 
 async function getUserPostsAndBio(userId, username) {
   try {
@@ -189,8 +209,8 @@ export const updateCampaignSchedule = async (campaignId) => {
     const schedulePayload = {
       timezone: "Asia/Kolkata",
       days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
-      // start_hour: "21:00", // 9 PM IST
-      start_hour : currentTimeFormatted,
+      start_hour: "21:00", // 9 PM IST
+      // start_hour : currentTimeFormatted,
       end_hour: "23:59",
       min_time_btw_emails: 3,
       max_new_leads_per_day: 100,
