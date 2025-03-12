@@ -25,7 +25,7 @@ export const generateEmailBody = async (recipient) => {
   console.log("recipient from email : " + recipient);
   return `{Hi|Hey|Hello} @${recipient.firstName}, I’m ${recipient.poc}<br>
 ${recipient.snippet1}<br>
-  We’re building something exciting at Stir—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
+  We’re building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
 What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.<br>
  {I’d love to hear your thoughts and see if this is something you’d like to explore!|I'd love to hear your story and see if Stir is the right fit for you!}<br>
 {No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="${calendlyUrl}">createstir.com/calendly</a>. Or if you’re ready to dive in, you can also onboard here: <a href="${onboardingUrl}">createstir.com/onboard</a>.<br>

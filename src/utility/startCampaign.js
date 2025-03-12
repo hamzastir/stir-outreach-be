@@ -3,14 +3,13 @@ import { createAxiosInstance } from "../utility/axiosInstance.js";
 import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
-import { data } from "../../data.js";
-import fs from "fs/promises"; // For promise-based file operations
-// Cache for storing recipients
+import { data } from "../../sendemail.js";
+
 let cachedRecipients = null;
 const pocEmailAccountMapping = {
   // "saif@createstir.com": 5940901,
   "yug@createstir.com": 5909762,
-  "akshat@createstir.com": 5916763,
+  // "akshat@createstir.com": 5916763,
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,43 +55,20 @@ async function getUsersToSchedule() {
   }
 }
 
-async function getUserPostsAndBio(userId, index) {
+async function getUserPostsAndBio(userId, username) {
   try {
-    const dataIndex = index % data.length;
-    const userData = data[dataIndex];
-
-    return [
-      {
-        user_id: userId,
-        username: userData.username,
-        biography: userData.biography,
-        caption: userData.caption1,
-        taken_at: new Date(),
-      },
-      {
-        user_id: userId,
-        username: userData.username,
-        biography: userData.biography,
-        caption: userData.caption2,
-        taken_at: new Date(),
-      },
-      {
-        user_id: userId,
-        username: userData.username,
-        biography: userData.biography,
-        caption: userData.caption3,
-        taken_at: new Date(),
-      },
-      {
-        user_id: userId,
-        username: userData.username,
-        biography: userData.biography,
-        caption: userData.caption4,
-        taken_at: new Date(),
-      },
-    ];
+    // Find matching user by username, or fall back to first user if not found
+    const userData = data.users.find(user => user.username === username) || data.users[0];
+    
+    return {
+      user_id: userId,
+      username: username, // Use the correct username from DB
+      biography: userData.biography || "",
+      captions: userData.last_five_captions ? userData.last_five_captions.slice(0, 4) : [],
+      taken_at: new Date(),
+    };
   } catch (error) {
-    console.error("Error fetching user posts and bio from data.js:", error);
+    console.error("Error fetching user posts and bio from outreach.js:", error);
     throw error;
   }
 }
@@ -113,27 +89,29 @@ export async function prepareRecipients() {
     }
 
     const recipients = await Promise.all(
-      usersToSchedule.map(async (user, index) => {
-        console.log(`Processing user ${index}:`, user);
+      usersToSchedule.map(async (user) => {
+        console.log(`Processing user:`, user);
 
-        const userPosts = await getUserPostsAndBio(user.user_id, index);
-        const captions = userPosts.map((post) => post.caption);
-        const bio = userPosts[0]?.biography || "";
-        const dataUsername = userPosts[0].username;
-console.log("Generating snippet for  ", dataUsername);
+        // Get user data from our data.js mapping - now using username to match
+        const userData = await getUserPostsAndBio(user.user_id, user.username);
+        
+        console.log("Generating snippet for ", userData.username);
+        
+        // Use the email from the backend (DB) as primary source
+        const userEmail = user.business_email;
+        
         const { snippet1, snippet2 } = await generateEmailSnippets(
-          dataUsername,
-          user.business_email,
-          captions,
-          bio
+          userData.username,
+          userEmail,
+          userData.captions,
+          userData.biography
         );
-
         return {
-          campaign_id : user.campaign_id,
+          campaign_id: user.campaign_id,
           poc: user.poc,
           poc_email: user.poc_email_address,
-          email: user.business_email,
-          firstName: dataUsername,
+          email: userEmail,
+          firstName: userData.username, // This should now match the DB username
           snippet1: snippet1,
           snippet2: snippet2,
         };
@@ -149,6 +127,7 @@ console.log("Generating snippet for  ", dataUsername);
   }
 }
 
+// Rest of the code remains the same
 export async function createNewCampaign() {
   return await withRetry(async () => {
     const api = createAxiosInstance();
@@ -207,8 +186,8 @@ export const updateCampaignSchedule = async (campaignId) => {
 
     const schedulePayload = {
       timezone: "Asia/Kolkata",
-      days_of_the_week: [0, 1, 2, 3, 4, 5, 6],
-      start_hour: currentTimeFormatted,
+      days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
+      start_hour: "21:00", // 9 PM IST
       end_hour: "23:59",
       min_time_btw_emails: 3,
       max_new_leads_per_day: 100,

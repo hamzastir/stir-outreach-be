@@ -6,20 +6,22 @@ import path from "path";
 
 const app = express();
 const instagramUsernames = [
-    "filmprobe",
-    "cinemafromthepast",
-    "asiancinemaarchive",
-    "filmsyoushouldbewatching",
-    "cineoholic",
-    "thecinemagroup",
-    "thecinemagroupnews",
-    "raindancefilmfestival",
-    "aliplumb",
-    "officialuniversalmonsters",
-    "barbicancentre",
-    "moviewatchinggirl",
-    "cine.magician",
-    "frankfilmclub",
+    // "filmprobe",
+    // "cinemafromthepast",
+    // "asiancinemaarchive",
+    // "filmsyoushouldbewatching",
+    // "cineoholic",
+    // "thecinemagroup",
+    // "thecinemagroupnews",
+    // "raindancefilmfestival",
+    // "aliplumb",
+    // "officialuniversalmonsters",
+    // "barbicancentre",
+    // "moviewatchinggirl",
+    // "cine.magician",
+    // "frankfilmclub",
+    "the.vintage.era",
+    "luckyboyreviews"
   ];
 
 // Path to outreach JSON file

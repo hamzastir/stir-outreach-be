@@ -25,7 +25,7 @@ async function getTopInfluencers() {
       WHERE onboard_completed = true 
       AND verified_by_admin = true
       AND onboarded_at >= NOW() - INTERVAL '15 days'
-      ORDER BY total_audience DESC
+      ORDER BY RANDOM()  
       LIMIT 2;
     `);
 
@@ -39,10 +39,10 @@ async function getTopInfluencers() {
     const numbers = [20, 21, 22, 23, 26, 27, 28];
     const randomNumber = numbers[Math.floor(Math.random() * numbers.length)];
 
-    return `${firstTwo} + ${randomNumber} others have recently got their exclusive access to Stir!`;
+    return `${firstTwo} + ${randomNumber} others have recently joined us.`;
   } catch (error) {
     console.error("Error fetching top influencers:", error);
-    return `@spaceofcenema, @filmtvrate + 23 others have recently got their exclusive access to Stir!`;
+    return `@spaceofcenema, @filmtvrate + 23 others have recently joined us.`;
   }
 }
 
