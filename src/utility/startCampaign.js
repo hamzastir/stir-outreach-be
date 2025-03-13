@@ -46,25 +46,28 @@ async function getUsersToSchedule() {
         "poc_email_address",
         "campaign_id"
       )
-      .where("first_email_status", "yet_to_schedule")
-      .limit(10);
+      .where("first_email_status", "yet_to_schedule");
 
     console.log("Users fetched from database:", users);
 
     if (users.length === 0) return [];
 
     // Extract usernames from the users
-    const usernames = users.map(user => user.username);
+    const usernames = users.map((user) => user.username);
 
     // Fetch existing usernames from influencer_onboarded in pdb
     const onboardedUsers = await pdb("influencer_onboarded")
       .select("handle")
       .whereIn("handle", usernames);
 
-    const onboardedUsernames = new Set(onboardedUsers.map(user => user.username));
+    const onboardedUsernames = new Set(
+      onboardedUsers.map((user) => user.username)
+    );
 
     // Filter users whose username is NOT in influencer_onboarded
-    const filteredUsers = users.filter(user => !onboardedUsernames.has(user.username));
+    const filteredUsers = users.filter(
+      (user) => !onboardedUsernames.has(user.username)
+    );
 
     console.log("Filtered users (not onboarded):", filteredUsers);
     return filteredUsers;
@@ -74,17 +77,19 @@ async function getUsersToSchedule() {
   }
 }
 
-
 async function getUserPostsAndBio(userId, username) {
   try {
     // Find matching user by username, or fall back to first user if not found
-    const userData = data.users.find(user => user.username === username) || data.users[0];
-    
+    const userData =
+      data.users.find((user) => user.username === username) || data.users[0];
+
     return {
       user_id: userId,
       username: username, // Use the correct username from DB
       biography: userData.biography || "",
-      captions: userData.last_five_captions ? userData.last_five_captions.slice(0, 4) : [],
+      captions: userData.last_five_captions
+        ? userData.last_five_captions.slice(0, 4)
+        : [],
       taken_at: new Date(),
     };
   } catch (error) {
@@ -114,26 +119,26 @@ export async function prepareRecipients() {
 
         // Get user data from our data.js mapping - now using username to match
         const userData = await getUserPostsAndBio(user.user_id, user.username);
-        
+
         console.log("Generating snippet for ", userData.username);
-        
+
         // Use the email from the backend (DB) as primary source
         const userEmail = user.business_email;
-        
-        const { snippet1, snippet2 } = await generateEmailSnippets(
-          userData.username,
-          userEmail,
-          userData.captions,
-          userData.biography
-        );
-        // const snippet1 = "snippet 1";
-        // const snippet2 = "snippet 2";
+
+        // const { snippet1, snippet2 } = await generateEmailSnippets(
+        //   userData.username,
+        //   userEmail,
+        //   userData.captions,
+        //   userData.biography
+        // );
+        const snippet1 = "snippet 1";
+        const snippet2 = "snippet 2";
         return {
           campaign_id: user.campaign_id,
           poc: user.poc,
           poc_email: user.poc_email_address,
           email: userEmail,
-          firstName: userData.username, 
+          firstName: userData.username,
           snippet1: snippet1,
           snippet2: snippet2,
         };
@@ -209,8 +214,8 @@ export const updateCampaignSchedule = async (campaignId) => {
     const schedulePayload = {
       timezone: "Asia/Kolkata",
       days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
-      start_hour: "21:00", // 9 PM IST
-      // start_hour : currentTimeFormatted,
+      // start_hour: "21:00", // 9 PM IST
+      start_hour: currentTimeFormatted,
       end_hour: "23:59",
       min_time_btw_emails: 3,
       max_new_leads_per_day: 100,
@@ -235,21 +240,34 @@ export const addLeadsToCampaign = async (campaignId) => {
     const recipients = await prepareRecipients();
     console.log("Recipients for adding leads:", recipients);
 
-    const validLeads = recipients
-      .filter((r) => validateEmail(r.email))
-      .map((recipient) => ({
+    // Filter valid recipients first
+    const validRecipients = recipients.filter((r) => validateEmail(r.email));
+
+    if (validRecipients.length === 0) {
+      throw new Error("No valid leads to add to campaign");
+    }
+
+    // Generate email bodies for all valid recipients
+    const validLeadsPromises = validRecipients.map(async (recipient) => {
+      const emailBody = await generateEmailBody({
+        ...recipient,
+        snippet1: recipient.snippet1,
+        snippet2: recipient.snippet2,
+      });
+
+      return {
         email: recipient.email,
         first_name: recipient.firstName,
         custom_fields: {
           snippet1: recipient.snippet1,
           snippet2: recipient.snippet2,
-          poc_email: recipient.poc_email, // Optional
+          poc_email: emailBody,
         },
-      }));
+      };
+    });
 
-    if (validLeads.length === 0) {
-      throw new Error("No valid leads to add to campaign");
-    }
+    // Wait for all promises to resolve
+    const validLeads = await Promise.all(validLeadsPromises);
 
     console.log("Sending validated leads:", validLeads);
 
@@ -266,18 +284,17 @@ export const addLeadsToCampaign = async (campaignId) => {
       console.log("✅ Leads Added Successfully:", response.data);
       return response.data;
     }, "addLeadsToCampaign");
-    
 
     // Extract the emails that were successfully scheduled
     const scheduledEmails = validLeads.map((lead) => lead.email);
 
-    if (scheduledEmails.length > 0) {
-      await db("stir_outreach_dashboard")
-        .whereIn("business_email", scheduledEmails)
-        .update({ first_email_status: "scheduled", campaign_id: campaignId });
+    // if (scheduledEmails.length > 0) {
+    //   await db("stir_outreach_dashboard")
+    //     .whereIn("business_email", scheduledEmails)
+    //     .update({ first_email_status: "scheduled", campaign_id: campaignId });
 
-      console.log("✅ Updated first_email_status to 'scheduled' in DB");
-    }
+    //   console.log("✅ Updated first_email_status to 'scheduled' in DB");
+    // }
 
     return response;
   } catch (error) {
@@ -285,7 +302,6 @@ export const addLeadsToCampaign = async (campaignId) => {
     throw error;
   }
 };
-
 export const createCampaignSequence = async (campaignId) => {
   try {
     const recipients = await prepareRecipients();
@@ -298,26 +314,19 @@ export const createCampaignSequence = async (campaignId) => {
     return await withRetry(async () => {
       const api = createAxiosInstance();
 
-      const sequenceVariants = await Promise.all(
-        recipients.map(async (recipient, index) => ({
-          subject: `Stir <> @${recipient.firstName} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
-          email_body: await generateEmailBody({
-            ...recipient,
-            snippet1: recipient.snippet1,
-            snippet2: recipient.snippet2,
-          }),
-          variant_label: `Variant_${index + 1}`,
-        }))
-      );
-
-      console.log("Sequence variants created:", sequenceVariants);
-
+      // Create the sequence payload with just one variant
       const sequencePayload = {
         sequences: [
           {
             seq_number: 1,
             seq_delay_details: { delay_in_days: 0 },
-            seq_variants: sequenceVariants,
+            seq_variants: [
+              {
+                subject: `Stir <> Creator | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
+                email_body: `<p>Hi {{custom_fields.poc_email}},</p>`,
+                variant_label: "Default",
+              },
+            ],
           },
         ],
       };
@@ -334,7 +343,6 @@ export const createCampaignSequence = async (campaignId) => {
     throw error;
   }
 };
-
 export const startCampaign = async (campaignId) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();

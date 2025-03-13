@@ -16,7 +16,7 @@ export const data = {
     {
       username: "viralpopculture",
       biography: "Where culture meets entertainment.",
-      public_email: "viralpopculture@gmail.com",
+      public_email: "kingsaks02@gmail.com",
       last_five_captions: [
         "Jackie Chan really had no idea who the Kardashians were 😭",
         "Scarlett Johansson says she won’t be returning as Black Widow 👀\n\n📸: @hungvanngo - slide 1",
@@ -29,7 +29,7 @@ export const data = {
       username: "cineocultooficial",
       biography:
         "🎬 Cine Independiente y Cine de Culto 🇵🇪\n📩 Luis@cineoculto.com\n🎙️🎧 @crossover_podcast.pe\n ⚠️ Sección Tech 🎮📱/ Foodie 🍜🥃\n📢 TikTok 185K",
-      public_email: "luis@cineoculto.com",
+      public_email: "codemorphers@gmail.com",
       last_five_captions: [
         "¡No importa en qué multiverso o dimensión estés, nadie puede resistirse a una Coca-Cola bien helada! 🤤\n\nCorre a conseguir tu colección de la edición limitada de los superhéroes del Universo Marvel. 😍🔥\n¡Colecciónalas todas!\n\n@cocacolape\n#CocaCola #Marvel #Publicidad\n\n🎬 Video producido con el apoyo de mi equipo:\nIdea y guion: Luis Zúñiga \nDirección: Andres Manco\nDirección de Fotografía: Joahari Villacorta\nDirección de arte: Carmen Tamariz\nEdición: Andres Manco\nPost de Audio: Gonzalo Manrique\n@nohaybandafilms",
         "Mira la nueva colaboración de CASIO & Stranger Things ⌚📺\n\nUn reloj vintage que captura la esencia de los años 80 y los juegos arcade. Perfecto para regalo de Navidad 🎄\n\nTambién está disponible por la web de @btimeperuof 👈🏼\n\n_____\n\n#strangerthings #casio #netflix #cineoculto #publicidad",
@@ -42,7 +42,7 @@ export const data = {
       username: "cinemaexcelsiorr",
       biography:
         "tu safe space de cine 📹\ncontact@cinemaexcelsiorr.com\n@vsalme",
-      public_email: "newcinemaexcelsior@gmail.com",
+      public_email: "axat0207@gmail.com",
       last_five_captions: [
         "Mi libro ‘El cine reparador’ sale el 10 de marzo, y ya está disponible en preventa en todas las librerías online. Links en bio ♥️\n\nHola, soy Víctor, aunque la mayoría me conoceréis como Cinema Excelsior. Durante estas últimas semanas, desde que me confirmaron que el libro estaba terminado y listo para imprimir, he estado pensando mucho en por qué hago lo que hago. El medio por el que os comparto mi pasión por el cine no siempre es del todo transparente. Puede resultar muy confuso muy a menudo.\n\nSi hay algo que sí me ha dado es una sensación de comunidad que de ninguna otra forma podría haber conseguido, y creo que mi manera de crear siempre ha estado ligada a esa necesidad de conexión con los demás.\n\nEste libro es la forma más real y palpable de haceros llegar lo que el cine ha significado durante los años más confusos de mi vida. Para mí, el cine es reparador. Solo espero que después de leerlo, también lo sea para ti.\n\nDedicado a mis abuelas — y a todas las personas que me han soportado mientras lo escribía.\n\nVíctor xx\n__________________\nMy book ‘El cine reparador’ comes out on March 10th, and is already available for pre-sale in all Spanish online retailers. It’s written in Spanish, but if it works out well, there’s already plans to get it translated to English. Links in bio for pre-sales ♥️\n\nHi, I’m Victor, although most of you might know me as Cinema Excelsior. During these last few weeks, since I got confirmation that the book was finished and ready to print, I’ve been thinking a lot about why I do what I do. The medium through which I share my passion for film with you is not entirely transparent. And it can be very confusing very often.\n\nIf anything, it has given me a sense of community that I couldn’t have got any other way, and I think the way I create has always been linked to that need of connection with you.\n\nThis book is the most real and palpable way of telling you what cinema has meant to me during the most confusing years of my life. For me, cinema is restorative. And I can only hope that it will be for you too after reading it.\n\nDedicated to my grandmothers — and to all the people who have had put up with me while I was writing it.\n\nVictor xx",
         "Ya que os encantó la portada, sorteo 10 posters firmados 'El cine reparador':\n\n1. Comentar Agnès Varda <3\n2. Compartir en stories\n3. Haber comprado el librito 😬\n\nTenéis hasta el miércoles para participar, y el jueves anuncio ganadorxs ♥️ Muchísimas gracias por los mensajes y por apoyar el libro, espero que os guste. Ya en vuestras librerías de confianza o a través del link en mi perfil.\n____________________\nSince you seemed to love the cover, I’m giving away 10 signed posters:\n\n1. Comment Agnès Varda <3\n2. Share on stories\n3. Get the book \n\nYou have until Wednesday to participate, and on Thursday I’ll announce the winners ♥️ Thank you so much for your messages and for supporting the book, I hope you like it! This is part of the Spanish version launch, but I'm already working on an English translation of the book. Stay tuned for that!!",
@@ -54,7 +54,7 @@ export const data = {
     {
       username: "cinematicpaintings",
       biography: "Every Frame a Painting",
-      public_email: "cinematicpaintings@gmail.com",
+      public_email: "axxatagrawal@gmail.com",
       last_five_captions: [
         "The Girl with the Needle (2024)\n.\n.\n🎬 Directed by: Magnus von Horn\n🎥 Cinematography by: Michał Dymek\n🎨 Production Design by: Jagna Dobesz",
         "Utopia (1983)\n.\n.\n🎬 Directed by: Sohrab Shahid-Saless\n🎥 Cinematography by: Ramin Reza Molai\n🎨 Production Design by: Claus-Jürgen Pfeiffer",
