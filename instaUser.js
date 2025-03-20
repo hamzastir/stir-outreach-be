@@ -1,4 +1,4 @@
-const API_HOST = "instagram-scraper-api2.p.rapidapi.com";
+const API_HOST = "mediafy-api.p.rapidapi.com";
 
 export async function fetchUserPosts(username) {
     const url = `https://${API_HOST}/v1/posts?username_or_id_or_url=${encodeURIComponent(

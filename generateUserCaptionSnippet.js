@@ -6,21 +6,16 @@ import path from "path";
 
 const app = express();
 const instagramUsernames = [
-   "maismovies",
-  "viralpopculture",
-  "cineocultooficial",
-  "cinemaexcelsiorr",
-  "cinematicpaintings",
-  "allfem",
-  "druscillad",
-  "allietrannn",
-  "blex_media",
-  "cinematicbuzz",
-  "crisepanda",
-  "citandotv",
-  "georgieeisdellmakeup",
-  "purebreak",
-  "mjhiblenart"
+  "syfywire",
+  "joaosoar3s",
+  "haramiparindey",
+  "scaryflix",
+  "andremusgrove",
+  "disneyphotopass",
+  "marissa.marino",
+  "yomzansi",
+  "thesocialctv",
+  "looperhq"
   ];
 
 // Path to outreach JSON file

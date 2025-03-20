@@ -125,15 +125,21 @@ export async function prepareRecipients() {
         // Use the email from the backend (DB) as primary source
         const userEmail = user.business_email;
 
-        // const { snippet1, snippet2 } = await generateEmailSnippets(
-        //   userData.username,
-        //   userEmail,
-        //   userData.captions,
-        //   userData.biography
-        // );
-        const snippet1 = "snippet 1";
-        const snippet2 = "snippet 2";
-        return {
+        const { snippet1, snippet2 } = await generateEmailSnippets(
+          userData.username,
+          userEmail,
+          userData.captions,
+          userData.biography
+        );
+        // const snippet1 =
+        //   "this is ai generated custom snippet for : " + userData.username;
+        // const snippet2 = "20 people joined today";
+
+        const CALENDLY_BASE_URL = "https://www.createstir.com/calendly";
+        const ONBOARDING_BASE_URL = "https://www.createstir.com/onboard";
+
+        // Create the recipient object first
+        const recipient = {
           campaign_id: user.campaign_id,
           poc: user.poc,
           poc_email: user.poc_email_address,
@@ -141,6 +147,43 @@ export async function prepareRecipients() {
           firstName: userData.username,
           snippet1: snippet1,
           snippet2: snippet2,
+        };
+
+        const getCampaignIdByEmail = async (email) => {
+          const result = await db("stir_outreach_dashboard")
+            .select("campaign_id")
+            .where("business_email", email)
+            .first(); // Get a single record
+
+          return result?.campaign_id || null;
+        };
+
+        const generateParameterizedUrls = async (email, name) => {
+          const campaignId = await getCampaignIdByEmail(email);
+
+          const params = new URLSearchParams({
+            email: email,
+            name: name,
+            id: campaignId || "",
+          });
+
+          return {
+            calendlyUrl: `${CALENDLY_BASE_URL}?${params.toString()}`,
+            onboardingUrl: `${ONBOARDING_BASE_URL}?${params.toString()}`,
+          };
+        };
+
+        const { calendlyUrl, onboardingUrl } = await generateParameterizedUrls(
+          userEmail,
+          userData.username
+        );
+
+        // Add the URLs to the recipient object
+        recipient.calendlyUrl = calendlyUrl;
+        recipient.onboardingUrl = onboardingUrl;
+
+        return {
+          ...recipient,
         };
       })
     );
@@ -153,7 +196,6 @@ export async function prepareRecipients() {
     throw error;
   }
 }
-
 // Rest of the code remains the same
 export async function createNewCampaign() {
   return await withRetry(async () => {
@@ -249,19 +291,15 @@ export const addLeadsToCampaign = async (campaignId) => {
 
     // Generate email bodies for all valid recipients
     const validLeadsPromises = validRecipients.map(async (recipient) => {
-      const emailBody = await generateEmailBody({
-        ...recipient,
-        snippet1: recipient.snippet1,
-        snippet2: recipient.snippet2,
-      });
-
       return {
         email: recipient.email,
         first_name: recipient.firstName,
         custom_fields: {
           snippet1: recipient.snippet1,
           snippet2: recipient.snippet2,
-          poc_email: emailBody,
+          poc: recipient.poc,
+          calendlyUrl: recipient.calendlyUrl,
+          onboardingUrl: recipient.onboardingUrl,
         },
       };
     });
@@ -288,13 +326,13 @@ export const addLeadsToCampaign = async (campaignId) => {
     // Extract the emails that were successfully scheduled
     const scheduledEmails = validLeads.map((lead) => lead.email);
 
-    // if (scheduledEmails.length > 0) {
-    //   await db("stir_outreach_dashboard")
-    //     .whereIn("business_email", scheduledEmails)
-    //     .update({ first_email_status: "scheduled", campaign_id: campaignId });
+    if (scheduledEmails.length > 0) {
+      await db("stir_outreach_dashboard")
+        .whereIn("business_email", scheduledEmails)
+        .update({ first_email_status: "scheduled", campaign_id: campaignId });
 
-    //   console.log("✅ Updated first_email_status to 'scheduled' in DB");
-    // }
+      console.log("✅ Updated first_email_status to 'scheduled' in DB");
+    }
 
     return response;
   } catch (error) {
@@ -314,7 +352,7 @@ export const createCampaignSequence = async (campaignId) => {
     return await withRetry(async () => {
       const api = createAxiosInstance();
 
-      // Create the sequence payload with just one variant
+      // Create a single template with personalization variables
       const sequencePayload = {
         sequences: [
           {
@@ -322,8 +360,16 @@ export const createCampaignSequence = async (campaignId) => {
             seq_delay_details: { delay_in_days: 0 },
             seq_variants: [
               {
-                subject: `Stir <> Creator | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
-                email_body: `<p>Hi {{custom_fields.poc_email}},</p>`,
+                subject: `Stir <> @{{first_name}} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
+                email_body: `{Hi|Hey|Hello} @{{first_name}}, I’m {{poc}}
+                {{snippet1}}<br>
+                 We’re building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
+What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.<br>
+ {I’d love to hear your thoughts and see if this is something you’d like to explore!|I'd love to hear your story and see if Stir is the right fit for you!}<br>
+{No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="{{calendlyUrl}}">createstir.com/calendly</a>. Or if you’re ready to dive in, you can also onboard here: <a href="{{onboardingUrl}}">createstir.com/onboard</a>.<br>
+ {Best,|Cheers,|Viva cinema,|Regards,}<br>Yug Dave<br>VP of Stellar Beginnings!<br>
+PS: <p>{{snippet2}}</p>
+                `,
                 variant_label: "Default",
               },
             ],
