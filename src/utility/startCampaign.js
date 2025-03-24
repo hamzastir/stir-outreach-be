@@ -35,6 +35,14 @@ export const withRetry = async (operation, name) => {
 
 async function getUsersToSchedule() {
   try {
+    try {
+      await db.raw('SELECT 1');
+      console.log('✅ Database connection successful');
+    } catch (error) {
+      console.error('❌ Database connection failed:', error);
+      return [];
+    }
+
     // Fetch users from stir_outreach_dashboard
     const users = await db("stir_outreach_dashboard")
       .select(
@@ -55,14 +63,28 @@ async function getUsersToSchedule() {
     // Extract usernames from the users
     const usernames = users.map((user) => user.username);
 
-    // Fetch existing usernames from influencer_onboarded in pdb
-    const onboardedUsers = await pdb("influencer_onboarded")
-      .select("handle")
-      .whereIn("handle", usernames);
+    // Try to connect to primary database, handle failure gracefully
+    let onboardedUsernames = new Set();
+    try {
+      // Test primary DB connection
+      await pdb.raw('SELECT 1');
+      console.log('✅ Primary database connection successful');
+      
+      // Fetch existing usernames from influencer_onboarded in pdb
+      const onboardedUsers = await pdb("influencer_onboarded")
+        .select("handle")
+        .whereIn("handle", usernames);
 
-    const onboardedUsernames = new Set(
-      onboardedUsers.map((user) => user.username)
-    );
+      onboardedUsernames = new Set(
+        onboardedUsers.map((user) => user.handle) // Make sure this matches the column name
+      );
+      
+      console.log(`Found ${onboardedUsernames.size} onboarded users in primary DB`);
+    } catch (pdbError) {
+      console.error('❌ Primary database connection failed:', pdbError);
+      console.log('Proceeding with all users since we cannot check onboarded status');
+      // Continue with all users since we can't check which ones are onboarded
+    }
 
     // Filter users whose username is NOT in influencer_onboarded
     const filteredUsers = users.filter(
@@ -106,7 +128,7 @@ export async function prepareRecipients() {
 
   try {
     const usersToSchedule = await getUsersToSchedule();
-    console.log("Users to schedule:", usersToSchedule);
+    // console.log("Users to schedule:", usersToSchedule;
 
     if (!usersToSchedule || usersToSchedule.length === 0) {
       console.log("No users found to schedule");

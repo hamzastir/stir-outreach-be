@@ -12,12 +12,16 @@ const knexConfig = {
       password: process.env.PG_PASSWORD,
       database: process.env.PG_DATABASE,
       port: process.env.PG_PORT,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      connectTimeout: 30000, //
+      acquireConnectionTimeout: 30000
     },
     pool: {
       min: 2,
       max: 20,
-      idleTimeoutMillis: 30000
+      idleTimeoutMillis: 30000,
+      acquireTimeoutMillis: 30000
+
     },
 };
 
