@@ -6,21 +6,30 @@ import path from "path";
 
 const app = express();
 const instagramUsernames = [
-  "5hahem",
-  "9newsdenver",
-  "acrojames",
-  "adolfoserra",
-  "amanda.exploring",
-  "artoftravesuras",
-  "_beneg_",
-  "berecker",
-  "blog_cinemaniac",
-  "candisgrace",
-  "carlcrusher",
-  "cinema.bestt",
-  "cinemablend",
-  "cinemadrive_",
-  "descontroladamente"
+  "cosmic.soul.music",
+    "elleisalwayshere",
+    "juanitosayoficial",
+    "sergiosdadjokes",
+    "ldope",
+    "wazaiii",
+    "marvellous__clips",
+    "cinemoviiee",
+    "henrikwahlstroem",
+    "therealmrhorror",
+    "wolfythewitch",
+    "davidvaughn",
+    "marvel.memepage",
+    "presepadageek",
+    "kirill.englisher",
+    "njmom",
+    "movies.verse",
+    "chwinery",
+    "kate.ovens",
+    "hosanna.wong",
+    "shannonrwatts",
+    "glographics",
+    "gothic_details",
+    "sydneynicoleaddams"
   ];
 
 // Path to outreach JSON file
