@@ -3,14 +3,13 @@ import { createAxiosInstance } from "../utility/axiosInstance.js";
 import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
-import { data } from "../../sendemail.js";
-import { db as pdb } from "../db/primaryDb.js";
+import { fetchUserInfo, fetchUserPosts } from "./instaApi.js";
 
-let cachedRecipients = null;
+let cachedRecipientsByPoc = {};
 const pocEmailAccountMapping = {
-  // "saif@createstir.com": 5940901,
+  "saif@createstir.com": 5940901,
   "yug@createstir.com": 5909762,
-  // "akshat@createstir.com": 5916763,
+  "akshat@createstir.com": 5916763,
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,7 +32,7 @@ export const withRetry = async (operation, name) => {
   }
 };
 
-async function getUsersToSchedule() {
+async function getUsersToSchedule(pocFilter = null) {
   try {
     try {
       await db.raw('SELECT 1');
@@ -43,11 +42,11 @@ async function getUsersToSchedule() {
       return [];
     }
 
-    // Fetch users from stir_outreach_dashboard
-    const users = await db("stir_outreach_dashboard")
+    // Base query
+    let query = db("stir_outreach_dashboard")
       .select(
         "user_id",
-        "username",
+        "username", 
         "name",
         "business_email",
         "poc",
@@ -55,18 +54,26 @@ async function getUsersToSchedule() {
         "campaign_id"
       )
       .where("first_email_status", "yet_to_schedule");
+    
+    // Apply POC filter if provided
+    if (pocFilter) {
+      query = query.andWhere("poc", pocFilter);
+    }
+    
+    const users = await query;
 
-    console.log("Users fetched from database:", users);
+    console.log(`Users fetched from database: ${users.length} users${pocFilter ? ` for POC ${pocFilter}` : ''}`);
 
     if (users.length === 0) return [];
 
     // Extract usernames from the users
     const usernames = users.map((user) => user.username);
 
-    // Try to connect to primary database, handle failure gracefully
+    // Check which users are already onboarded
     let onboardedUsernames = new Set();
     try {
-      // Test primary DB connection
+      // Use the primary DB if available, but don't fail if it's not
+      const { db: pdb } = await import("../db/primaryDb.js");
       await pdb.raw('SELECT 1');
       console.log('✅ Primary database connection successful');
       
@@ -76,14 +83,13 @@ async function getUsersToSchedule() {
         .whereIn("handle", usernames);
 
       onboardedUsernames = new Set(
-        onboardedUsers.map((user) => user.handle) // Make sure this matches the column name
+        onboardedUsers.map((user) => user.handle)
       );
       
       console.log(`Found ${onboardedUsernames.size} onboarded users in primary DB`);
     } catch (pdbError) {
       console.error('❌ Primary database connection failed:', pdbError);
       console.log('Proceeding with all users since we cannot check onboarded status');
-      // Continue with all users since we can't check which ones are onboarded
     }
 
     // Filter users whose username is NOT in influencer_onboarded
@@ -91,7 +97,7 @@ async function getUsersToSchedule() {
       (user) => !onboardedUsernames.has(user.username)
     );
 
-    console.log("Filtered users (not onboarded):", filteredUsers);
+    console.log("Filtered users (not onboarded):", filteredUsers.length);
     return filteredUsers;
   } catch (error) {
     console.error("Error fetching users to schedule:", error);
@@ -99,153 +105,215 @@ async function getUsersToSchedule() {
   }
 }
 
-async function getUserPostsAndBio(userId, username) {
+async function fetchInstagramUserData(username) {
+  console.log(`Fetching Instagram data for ${username}...`);
   try {
-    // Find matching user by username, or fall back to first user if not found
-    const userData =
-      data.users.find((user) => user.username === username) || data.users[0];
+    // Fetch user info and posts in parallel
+    const [userInfoResponse, userPostsResponse] = await Promise.all([
+      fetchUserInfo(username),
+      fetchUserPosts(username),
+    ]);
 
+    // Extract captions from posts
+    const captions = [];
+    if (userPostsResponse?.data?.items && userPostsResponse.data.items.length > 0) {
+      const posts = userPostsResponse.data.items.slice(0, 5);
+      for (const post of posts) {
+        if (post?.caption?.text) {
+          captions.push(post.caption.text);
+        }
+      }
+    }
+
+    // Create and return user data object
     return {
-      user_id: userId,
-      username: username, // Use the correct username from DB
-      biography: userData.biography || "",
-      captions: userData.last_five_captions
-        ? userData.last_five_captions.slice(0, 4)
-        : [],
-      taken_at: new Date(),
+      username: username,
+      biography: userInfoResponse?.data?.biography || "",
+      public_email: userInfoResponse?.data?.public_email || null,
+      last_five_captions: captions,
     };
   } catch (error) {
-    console.error("Error fetching user posts and bio from outreach.js:", error);
-    throw error;
+    console.error(`Error fetching Instagram data for ${username}:`, error);
+    // Return minimal data in case of error
+    return {
+      username: username,
+      biography: "",
+      public_email: null,
+      last_five_captions: [],
+    };
   }
 }
 
-export async function prepareRecipients() {
-  if (cachedRecipients) {
-    console.log("Using cached recipients:", cachedRecipients);
-    return cachedRecipients;
+export async function prepareRecipients(poc = null) {
+  // Check if we have cached recipients for this POC
+  const cacheKey = poc || 'default';
+  if (cachedRecipientsByPoc[cacheKey]) {
+    console.log(`Using cached recipients for ${cacheKey}:`, cachedRecipientsByPoc[cacheKey].length);
+    return cachedRecipientsByPoc[cacheKey];
   }
 
   try {
-    const usersToSchedule = await getUsersToSchedule();
-    // console.log("Users to schedule:", usersToSchedule;
+    const usersToSchedule = await getUsersToSchedule(poc);
 
     if (!usersToSchedule || usersToSchedule.length === 0) {
-      console.log("No users found to schedule");
+      console.log(`No users found to schedule ${poc ? `for POC ${poc}` : ''}`);
       return [];
     }
 
-    const recipients = await Promise.all(
-      usersToSchedule.map(async (user) => {
-        console.log(`Processing user:`, user);
+    // Process users in batches to avoid rate limiting
+    const batchSize = 5;
+    const allRecipients = [];
+    
+    for (let i = 0; i < usersToSchedule.length; i += batchSize) {
+      const batch = usersToSchedule.slice(i, i + batchSize);
+      console.log(`Processing batch ${i/batchSize + 1} of ${Math.ceil(usersToSchedule.length/batchSize)}`);
+      
+      const batchPromises = batch.map(async (user) => {
+        try {
+          // Fetch Instagram data directly instead of using static data
+          const userData = await fetchInstagramUserData(user.username);
+          console.log(`Generating snippet for ${userData.username} (POC: ${user.poc})`);
 
-        // Get user data from our data.js mapping - now using username to match
-        const userData = await getUserPostsAndBio(user.user_id, user.username);
+          // Use the email from the database as primary source
+          const userEmail = user.business_email || userData.public_email;
 
-        console.log("Generating snippet for ", userData.username);
+          if (!userEmail) {
+            console.log(`No email found for ${userData.username}, skipping`);
+            return null;
+          }
 
-        // Use the email from the backend (DB) as primary source
-        const userEmail = user.business_email;
+          // Generate snippets using the fetched Instagram data
+          const { snippet1, snippet2 } = await generateEmailSnippets(
+            userData.username,
+            userEmail,
+            userData.last_five_captions,
+            userData.biography
+          );
 
-        const { snippet1, snippet2 } = await generateEmailSnippets(
-          userData.username,
-          userEmail,
-          userData.captions,
-          userData.biography
-        );
-        // const snippet1 =
-        //   "this is ai generated custom snippet for : " + userData.username;
-        // const snippet2 = "20 people joined today";
+          const CALENDLY_BASE_URL = "https://www.createstir.com/calendly";
+          const ONBOARDING_BASE_URL = "https://www.createstir.com/onboard";
 
-        const CALENDLY_BASE_URL = "https://www.createstir.com/calendly";
-        const ONBOARDING_BASE_URL = "https://www.createstir.com/onboard";
-
-        // Create the recipient object first
-        const recipient = {
-          campaign_id: user.campaign_id,
-          poc: user.poc,
-          poc_email: user.poc_email_address,
-          email: userEmail,
-          firstName: userData.username,
-          snippet1: snippet1,
-          snippet2: snippet2,
-        };
-
-        const getCampaignIdByEmail = async (email) => {
-          const result = await db("stir_outreach_dashboard")
-            .select("campaign_id")
-            .where("business_email", email)
-            .first(); // Get a single record
-
-          return result?.campaign_id || null;
-        };
-
-        const generateParameterizedUrls = async (email, name) => {
-          const campaignId = await getCampaignIdByEmail(email);
-
-          const params = new URLSearchParams({
-            email: email,
-            name: name,
-            id: campaignId || "",
-          });
-
-          return {
-            calendlyUrl: `${CALENDLY_BASE_URL}?${params.toString()}`,
-            onboardingUrl: `${ONBOARDING_BASE_URL}?${params.toString()}`,
+          // Create the recipient object first
+          const recipient = {
+            campaign_id: user.campaign_id,
+            poc: user.poc,
+            poc_email: user.poc_email_address,
+            email: userEmail,
+            firstName: userData.username,
+            snippet1: snippet1,
+            snippet2: snippet2,
           };
-        };
 
-        const { calendlyUrl, onboardingUrl } = await generateParameterizedUrls(
-          userEmail,
-          userData.username
-        );
+          const getCampaignIdByEmail = async (email) => {
+            const result = await db("stir_outreach_dashboard")
+              .select("campaign_id")
+              .where("business_email", email)
+              .first(); // Get a single record
 
-        // Add the URLs to the recipient object
-        recipient.calendlyUrl = calendlyUrl;
-        recipient.onboardingUrl = onboardingUrl;
+            return result?.campaign_id || null;
+          };
 
-        return {
-          ...recipient,
-        };
-      })
-    );
+          const generateParameterizedUrls = async (email, name) => {
+            const campaignId = await getCampaignIdByEmail(email);
 
-    console.log("Final recipients:", recipients);
-    cachedRecipients = recipients;
-    return recipients;
+            const params = new URLSearchParams({
+              email: email,
+              name: name,
+              id: campaignId || "",
+            });
+
+            return {
+              calendlyUrl: `${CALENDLY_BASE_URL}?${params.toString()}`,
+              onboardingUrl: `${ONBOARDING_BASE_URL}?${params.toString()}`,
+            };
+          };
+
+          const { calendlyUrl, onboardingUrl } = await generateParameterizedUrls(
+            userEmail,
+            userData.username
+          );
+
+          // Add the URLs to the recipient object
+          recipient.calendlyUrl = calendlyUrl;
+          recipient.onboardingUrl = onboardingUrl;
+
+          return recipient;
+        } catch (error) {
+          console.error(`Error processing user ${user.username}:`, error);
+          return null;
+        }
+      });
+
+      // Wait for all promises in this batch to resolve
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Add valid results to the recipients list
+      allRecipients.push(...batchResults.filter(Boolean));
+      
+      // Add a small delay between batches to avoid rate limiting
+      if (i + batchSize < usersToSchedule.length) {
+        console.log(`Waiting before processing next batch...`);
+        await delay(3000);
+      }
+    }
+
+    console.log(`Final recipients${poc ? ` for POC ${poc}` : ''}:`, allRecipients.length);
+    cachedRecipientsByPoc[cacheKey] = allRecipients;
+    return allRecipients;
   } catch (error) {
-    console.error("Error preparing recipients:", error);
+    console.error(`Error preparing recipients${poc ? ` for POC ${poc}` : ''}:`, error);
     throw error;
   }
 }
-// Rest of the code remains the same
-export async function createNewCampaign() {
+
+export async function createNewCampaign(poc = null) {
   return await withRetry(async () => {
     const api = createAxiosInstance();
-    const data = {
-      name: "CreateStir Email Marketing Campaign",
-    };
+    const campaignName = poc 
+      ? `CreateStir Email Marketing Campaign - ${poc}` 
+      : "CreateStir Email Marketing Campaign";
+    
+    const data = { name: campaignName };
 
     const response = await api.post("campaigns/create", data);
-    console.log("✅ Campaign created:", response.data.id);
+    console.log(`✅ Campaign created${poc ? ` for ${poc}` : ''}:`, response.data.id);
     return response.data.id;
-  }, "createNewCampaign");
+  }, `createNewCampaign${poc ? `-${poc}` : ''}`);
 }
 
-export async function addEmailAccountToCampaign(campaignId) {
+export async function addEmailAccountToCampaign(campaignId, poc = null) {
   return await withRetry(async () => {
     const api = createAxiosInstance();
-    const data = {
-      email_account_ids: Object.values(pocEmailAccountMapping),
-    };
+    
+    let emailAccountIds;
+    
+    if (poc) {
+      // Get the email account ID for this specific POC
+      const pocEmail = `${poc.toLowerCase()}@createstir.com`;
+      const emailAccountId = pocEmailAccountMapping[pocEmail];
+      
+      if (!emailAccountId) {
+        console.error(`No email account mapping found for POC: ${poc} (${pocEmail})`);
+        throw new Error(`No email account mapping found for POC: ${poc}`);
+      }
+      
+      emailAccountIds = [emailAccountId]; // Only add the email account for this POC
+      console.log(`Using email account ${emailAccountId} for POC ${poc}`);
+    } else {
+      // Default behavior - use Akshat's account as in the original code
+      emailAccountIds = [pocEmailAccountMapping["akshat@createstir.com"]];
+      console.log(`Using default email account ${emailAccountIds[0]}`);
+    }
+    
+    const data = { email_account_ids: emailAccountIds };
 
     const response = await api.post(
       `campaigns/${campaignId}/email-accounts`,
       data
     );
-    console.log("✅ Email accounts added to campaign:", response.data);
+    console.log(`✅ Email account${poc ? ` for ${poc}` : ''} added to campaign:`, response.data);
     return response.data;
-  }, "addEmailAccountToCampaign");
+  }, `addEmailAccountToCampaign${poc ? `-${poc}` : ''}`);
 }
 
 export async function updateCampaignSettings(campaignId) {
@@ -299,16 +367,16 @@ const validateEmail = (email) => {
   return emailRegex.test(email);
 };
 
-export const addLeadsToCampaign = async (campaignId) => {
+export const addLeadsToCampaign = async (campaignId, poc = null) => {
   try {
-    const recipients = await prepareRecipients();
-    console.log("Recipients for adding leads:", recipients);
+    const recipients = await prepareRecipients(poc);
+    console.log(`Recipients for adding leads${poc ? ` to ${poc} campaign` : ''}:`, recipients.length);
 
     // Filter valid recipients first
     const validRecipients = recipients.filter((r) => validateEmail(r.email));
 
     if (validRecipients.length === 0) {
-      throw new Error("No valid leads to add to campaign");
+      throw new Error(`No valid leads to add to${poc ? ` ${poc}` : ''} campaign`);
     }
 
     // Generate email bodies for all valid recipients
@@ -329,7 +397,7 @@ export const addLeadsToCampaign = async (campaignId) => {
     // Wait for all promises to resolve
     const validLeads = await Promise.all(validLeadsPromises);
 
-    console.log("Sending validated leads:", validLeads);
+    console.log(`Sending ${validLeads.length} validated leads${poc ? ` for ${poc} campaign` : ''}`);
 
     const response = await withRetry(async () => {
       const api = createAxiosInstance();
@@ -341,9 +409,9 @@ export const addLeadsToCampaign = async (campaignId) => {
           ignore_duplicate_leads_in_other_campaign: false,
         },
       });
-      console.log("✅ Leads Added Successfully:", response.data);
+      console.log(`✅ Leads Added Successfully${poc ? ` to ${poc} campaign` : ''}:`, response.data);
       return response.data;
-    }, "addLeadsToCampaign");
+    }, `addLeadsToCampaign${poc ? `-${poc}` : ''}`);
 
     // Extract the emails that were successfully scheduled
     const scheduledEmails = validLeads.map((lead) => lead.email);
@@ -353,28 +421,23 @@ export const addLeadsToCampaign = async (campaignId) => {
         .whereIn("business_email", scheduledEmails)
         .update({ first_email_status: "scheduled", campaign_id: campaignId });
 
-      console.log("✅ Updated first_email_status to 'scheduled' in DB");
+      console.log(`✅ Updated ${scheduledEmails.length} records with first_email_status 'scheduled' in DB${poc ? ` for ${poc}` : ''}`);
     }
 
     return response;
   } catch (error) {
-    console.error("Error in addLeadsToCampaign:", error);
+    console.error(`Error in addLeadsToCampaign${poc ? ` for ${poc}` : ''}:`, error);
     throw error;
   }
 };
-export const createCampaignSequence = async (campaignId) => {
-  try {
-    const recipients = await prepareRecipients();
-    console.log("Recipients for sequence creation:", recipients);
 
-    if (!recipients || recipients.length === 0) {
-      throw new Error("No recipients found to create campaign sequence");
-    }
+export const createCampaignSequence = async (campaignId, poc = null) => {
+  try {
+    console.log(`Creating sequence${poc ? ` for ${poc} campaign` : ''}`);
 
     return await withRetry(async () => {
       const api = createAxiosInstance();
 
-      // Create a single template with personalization variables
       const sequencePayload = {
         sequences: [
           {
@@ -383,15 +446,14 @@ export const createCampaignSequence = async (campaignId) => {
             seq_variants: [
               {
                 subject: `Stir <> @{{first_name}} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
-                email_body: `{Hi|Hey|Hello} @{{first_name}}, I’m {{poc}}
+                email_body: `{Hi|Hey|Hello} @{{first_name}}, I’m {{poc}} <br>
                 {{snippet1}}<br>
                  We’re building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
 What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.<br>
  {I’d love to hear your thoughts and see if this is something you’d like to explore!|I'd love to hear your story and see if Stir is the right fit for you!}<br>
 {No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="{{calendlyUrl}}">createstir.com/calendly</a>. Or if you’re ready to dive in, you can also onboard here: <a href="{{onboardingUrl}}">createstir.com/onboard</a>.<br>
- {Best,|Cheers,|Viva cinema,|Regards,}<br>Yug Dave<br>VP of Stellar Beginnings!<br>
-PS: <p>{{snippet2}}</p>
-                `,
+ {Best,|Cheers,|Viva cinema,|Regards,}<br>{{poc}}<br>VP of Stellar Beginnings!<br>
+PS: {{snippet2}}`,
                 variant_label: "Default",
               },
             ],
@@ -403,33 +465,87 @@ PS: <p>{{snippet2}}</p>
         `campaigns/${campaignId}/sequences`,
         sequencePayload
       );
-      console.log("✅ Campaign Sequence Created Successfully:", response.data);
+      console.log(`✅ Campaign Sequence Created Successfully${poc ? ` for ${poc}` : ''}:`, response.data);
       return response.data;
-    }, "createCampaignSequence");
+    }, `createCampaignSequence${poc ? `-${poc}` : ''}`);
   } catch (error) {
-    console.error("Error in createCampaignSequence:", error);
+    console.error(`Error in createCampaignSequence${poc ? ` for ${poc}` : ''}:`, error);
     throw error;
   }
 };
-export const startCampaign = async (campaignId) => {
+
+export const startCampaign = async (campaignId, poc = null) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();
     const response = await api.post(`campaigns/${campaignId}/status`, {
       status: "START",
     });
-    console.log("✅ Campaign Started Successfully:", response.data);
+    console.log(`✅ Campaign${poc ? ` for ${poc}` : ''} Started Successfully:`, response.data);
     return response.data;
-  }, "startCampaign");
+  }, `startCampaign${poc ? `-${poc}` : ''}`);
 };
 
-export const validateCampaignSetup = async (campaignId) => {
+export const validateCampaignSetup = async (campaignId, poc = null) => {
   return await withRetry(async () => {
     const api = createAxiosInstance();
     const response = await api.get(`campaigns/${campaignId}`);
     if (!response.data) {
-      throw new Error("Campaign not found");
+      throw new Error(`Campaign${poc ? ` for ${poc}` : ''} not found`);
     }
-    console.log("✅ Campaign Validated Successfully");
+    console.log(`✅ Campaign${poc ? ` for ${poc}` : ''} Validated Successfully`);
     return true;
-  }, "validateCampaignSetup");
+  }, `validateCampaignSetup${poc ? `-${poc}` : ''}`);
+};
+
+// Function to create campaigns for all POCs
+export const createCampaignsByPoc = async () => {
+  try {
+    // List of POCs to create campaigns for
+    const pocs = ["Akshat", "Yug"]; // Add more POCs as needed
+    const campaignResults = [];
+    
+    for (const poc of pocs) {
+      console.log(`\n📍 Starting campaign creation for POC: ${poc}`);
+      
+      // Check if we have recipients for this POC
+      const recipients = await prepareRecipients(poc);
+      
+      if (!recipients || recipients.length === 0) {
+        console.log(`No recipients found for POC ${poc}, skipping campaign creation`);
+        continue;
+      }
+      
+      // Create new campaign for this POC
+      const campaignId = await createNewCampaign(poc);
+      
+      // Add email account specific to this POC
+      await addEmailAccountToCampaign(campaignId, poc);
+      
+      // Update campaign settings
+      await updateCampaignSettings(campaignId);
+      
+      // Update campaign schedule
+      await updateCampaignSchedule(campaignId);
+      
+      // Add leads to campaign
+      await addLeadsToCampaign(campaignId, poc);
+      
+      // Create campaign sequence
+      await createCampaignSequence(campaignId, poc);
+      
+      // Validate campaign setup
+      await validateCampaignSetup(campaignId, poc);
+      
+      // Start campaign
+      await startCampaign(campaignId, poc);
+      
+      campaignResults.push({ poc, campaignId });
+      console.log(`✅ Campaign for POC ${poc} created successfully with ID: ${campaignId}`);
+    }
+    
+    return campaignResults;
+  } catch (error) {
+    console.error("Error creating campaigns by POC:", error);
+    throw error;
+  }
 };
