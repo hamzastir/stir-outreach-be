@@ -20,9 +20,19 @@ const USE_ONLY_APPROVED_USERS = false; // Set to false to target all users, true
  * Helper function to calculate dates for follow-ups
  */
 const getDaysAgo = (days) => {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+  const now = new Date();
+  
+  // Get IST date
+  const istDate = new Date(new Date(now).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  
+  // Subtract days
+  istDate.setDate(istDate.getDate() - days);
+  
+  // Format as YYYY-MM-DD
+  const dateString = istDate.toISOString().split('T')[0];
+  
+  console.log(`${days} days ago in IST: ${dateString}`);
+  return dateString;
 };
 
 /**
@@ -185,27 +195,60 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
 };
 
 /**
+ * Helper function to get current date and time in IST
+ * @returns {Object} Object with date and time properties in IST
+ */
+const getCurrentISTDateTime = () => {
+  const now = new Date();
+  
+  // Convert to IST
+  const istDateTime = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  
+  // Parse the formatted date time string
+  const [dateStr, timeStr] = istDateTime.split(", ");
+  
+  // Convert "DD/MM/YYYY" to "YYYY-MM-DD"
+  const dateParts = dateStr.split("/");
+  const formattedDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+  
+  return {
+    date: formattedDate,  // YYYY-MM-DD format in IST
+    time: timeStr         // HH:MM:SS format in IST
+  };
+};
+
+/**
  * Update the database to record that a follow-up email was sent
  */
 const updateDatabaseForFollowup = async (email, followUpNumber) => {
   console.log(`Updating database for follow-up #${followUpNumber} email sent to ${email}...`);
   
   const updateObj = {};
+  const { date, time } = getCurrentISTDateTime();
   
   if (followUpNumber === 1) {
     updateObj.follow_up_1_status = true;
-    updateObj.follow_up_1_date = new Date().toISOString().split("T")[0];
-    updateObj.follow_up_1_time = new Date().toISOString().split("T")[1].split(".")[0];
+    updateObj.follow_up_1_date = date;
+    updateObj.follow_up_1_time = time;
   } 
   else if (followUpNumber === 2) {
     updateObj.follow_up_2_status = true;
-    updateObj.follow_up_2_date = new Date().toISOString().split("T")[0];
-    updateObj.follow_up_2_time = new Date().toISOString().split("T")[1].split(".")[0];
+    updateObj.follow_up_2_date = date;
+    updateObj.follow_up_2_time = time;
   }
   else if (followUpNumber === 3) {
     updateObj.follow_up_3_status = true;
-    updateObj.follow_up_3_date = new Date().toISOString().split("T")[0];
-    updateObj.follow_up_3_time = new Date().toISOString().split("T")[1].split(".")[0];
+    updateObj.follow_up_3_date = date;
+    updateObj.follow_up_3_time = time;
   }
 
   const updateResult = await db("stir_outreach_dashboard")
@@ -219,6 +262,7 @@ const updateDatabaseForFollowup = async (email, followUpNumber) => {
   console.log(`Database updated successfully for follow-up #${followUpNumber}`);
   return updateResult;
 };
+
 
 /**
  * Base query function that applies user filtering based on the setting

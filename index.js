@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import { config } from "./src/config/index.js";
+import axios from "axios";
 import {
   addEmailAccountToCampaign,
   addLeadsToCampaign,
@@ -127,6 +128,62 @@ app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
+
+// // Your Calendly API token - from your Calendly account settings
+// const CALENDLY_API_TOKEN = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzQxNzc4NjM3LCJqdGkiOiI3NzQ4MmIyNy0xMzNkLTRjZmEtODZlYi1mZmU3N2ExMDI3N2MiLCJ1c2VyX3V1aWQiOiI1YzhmMTYwMy04OWQ5LTQ1N2MtYmEyNS04ZDZiZmM2ZDhjZDMifQ.LZZe3i3-oW3NnLmRxCz35c29P7MeqFQj_vXjb1p-A0dphRFsWCYEpc9PIZ-3011Aoldy46MNEvaecGrKfAPlMg';
+
+// // Your ngrok URL + endpoint
+// const WEBHOOK_URL = 'https://386b-183-83-154-56.ngrok-free.app/api/calendly-webhook';
+
+// // Your organization URI - get this from your Calendly account
+// // Typically looks like: https://api.calendly.com/organizations/YOURORGANIZATIONID
+// const ORGANIZATION_URI = 'https://api.calendly.com/organizations/d18f6dd1-3eb5-4e67-8add-914c9ec7f857';
+
+// // Create a webhook subscription
+// async function createWebhook() {
+//   try {
+//     const response = await axios.post(
+//       'https://api.calendly.com/webhook_subscriptions',
+//       {
+//         url: WEBHOOK_URL,
+//         events: ['invitee.created'], // This event occurs when someone books
+//         organization: ORGANIZATION_URI,
+//         scope: 'organization'
+//       },
+//       {
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Authorization': `Bearer ${CALENDLY_API_TOKEN}`
+//         }
+//       }
+//     );
+    
+//     console.log('Webhook created successfully:');
+//     console.log(JSON.stringify(response.data, null, 2));
+//   } catch (error) {
+//     console.error('Error creating webhook:');
+//     console.error(error.response ? error.response.data : error.message);
+//   }
+// }
+
+// createWebhook();
+// app.post('/api/calendly-webhook', (req, res) => {
+//   // Log the entire request body to see what Calendly sends
+//   console.log('Webhook received!');
+//   console.log(JSON.stringify(req.body, null, 2));
+  
+//   // Check if this is a booking creation event
+//   if (req.body.event === 'invitee.created') {
+//     console.log('Hi! Someone booked a meeting with you!');
+//     console.log(`Name: ${req.body.payload.invitee.name}`);
+//     console.log(`Email: ${req.body.payload.invitee.email}`);
+//     console.log(`Event Type: ${req.body.payload.event_type.name}`);
+//     console.log(`Event Time: ${req.body.payload.scheduled_event.start_time}`);
+//   }
+  
+//   // Always respond with 200 to acknowledge receipt
+//   res.status(200).send('Webhook received successfully');
+// });
 // Routes
 app.get("/run", async (req, res) => {
   try {
