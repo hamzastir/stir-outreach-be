@@ -15,10 +15,13 @@ import {
   createCampaignsByPoc,
 } from "./src/utility/startCampaign.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
+import { createWebhook } from "./src/utility/calendlywebhook.js";
+
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from "./src/routes/users.js";
 import instaUserRoutes from "./src/routes/insta-users.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
+import calendlyRoutes from "./src/routes/calendly.js";
 import { 
   setupFollowupEmailCron, 
   sendFollowupEmails,
@@ -127,6 +130,7 @@ app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/calendly-webhook", calendlyRoutes);
 
 
 // // Your Calendly API token - from your Calendly account settings
@@ -289,7 +293,7 @@ app.listen(PORT, async () => {
     console.log("Visit /run-by-poc to run campaigns separated by POC");
     console.log("Visit /run-followup to start the follow-up email sequence");
     console.log("For testing: /run-followup-1, /run-followup-2, /run-followup-3 for specific stages");
-    
+    // createWebhook()
     // Set up the cron job when the server starts
     setupFollowupEmailCron();
     console.log("Cron jobs for follow-up emails have been set up (9:00, 9:01, 9:02 AM and 5:00, 5:01, 5:02 PM)");

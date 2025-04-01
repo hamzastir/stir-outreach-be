@@ -153,7 +153,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
   // Different email templates for each follow-up
   if (followUpNumber === 1) {
     emailBody = `
-      <p>Hey ${username},</p>
+      <p>Hey @${username},</p>
       Just a friendly nudge – haven't heard back from you. Figured I'd check in before you get completely lost in your next big movie review. <br><br>
   Seriously though, I think you would love what we're building at Stir. It's all about connecting passionate film lovers like you with filmmakers and studios. Think of early access, collabs, and a straight forward way to streamline your influence.<br><br>
   Why miss out? Let's chat when you have even 15 minutes. <a href="https://createstir.com/calendly">createstir.com/calendly</a><br><br>
@@ -162,7 +162,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
   } 
   else if (followUpNumber === 2) {
     emailBody = `
-      <p>Hi ${username},</p>
+      <p>Hi @${username},</p>
       I wanted to check in quickly as I know how emails can sometimes get buried in the mix. I'm reaching out about Stir, an invite-only platform connecting influencers like yourself with early access to unreleased films and opportunities to collaborate directly with leading studios.<br><br>
   Would love to connect if you think this might be a good fit for you. Let's chat for 15 minutes. <a href="https://createstir.com/calendly">createstir.com/calendly</a><br><br>
   Best,<br>${poc}
@@ -170,7 +170,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
   }
   else if (followUpNumber === 3) {
     emailBody = `
-      <p>Hi ${username},</p>
+      <p>Hi @${username},</p>
       Sorry to follow up one more time, but I wanted to reach out about your exclusive access to Stir. Since it's an invite-only platform, we're very intentional about who we work with, and I really think you'd be a great fit.<br><br>
   If this sounds interesting, I'd love to chat more. And if not, no problem at all - just let me know, I won't take it personally.<br><br>
   Best,<br>${poc}
