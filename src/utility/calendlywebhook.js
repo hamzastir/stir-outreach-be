@@ -7,7 +7,7 @@ dotenv.config();
 const CALENDLY_API_TOKEN = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzQxNzc4NjM3LCJqdGkiOiI3NzQ4MmIyNy0xMzNkLTRjZmEtODZlYi1mZmU3N2ExMDI3N2MiLCJ1c2VyX3V1aWQiOiI1YzhmMTYwMy04OWQ5LTQ1N2MtYmEyNS04ZDZiZmM2ZDhjZDMifQ.LZZe3i3-oW3NnLmRxCz35c29P7MeqFQj_vXjb1p-A0dphRFsWCYEpc9PIZ-3011Aoldy46MNEvaecGrKfAPlMg';
 
 // Your ngrok URL + endpoint
-const WEBHOOK_URL = 'http://104.131.101.181:3007/api/calendly-webhook';
+const WEBHOOK_URL = 'https://www.createstir.com/influencer-outreach/api/calendly-webhook';
 
 // Your organization URI - get this from your Calendly account
 // Typically looks like: https://api.calendly.com/organizations/YOURORGANIZATIONID
