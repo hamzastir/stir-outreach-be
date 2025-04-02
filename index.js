@@ -16,6 +16,9 @@ import {
 } from "./src/utility/startCampaign.js";
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
 import { createWebhook } from "./src/utility/calendlywebhook.js";
+import { db } from "./src/db/db.js";
+import cron from "node-cron";
+import moment from "moment-timezone";
 
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from "./src/routes/users.js";
@@ -45,6 +48,9 @@ console.log({ config });
 let globalCampaignId = null;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Flag to track if campaign has been created for the day
+let campaignCreatedToday = false;
 
 const execute = async () => {
   try {
@@ -126,69 +132,106 @@ const runCampaign = async () => {
   }
 };
 
+// Function to fetch influencers and prepare them for outreach
+const prepareInfluencersForOutreach = async () => {
+  try {
+    console.log("Starting to prepare influencers for outreach...");
+    
+    // Reset the flag at the start of a new job
+    campaignCreatedToday = false;
+    
+    // Fetch 40 influencers where category is Yellow and status is null or not 'scheduled'
+    const influencers = await db("influencer_outreach_verified_email")
+      .select("user_id", "username", "business_email")
+      .where("category", "Yellow")
+      .where(function() {
+        this.whereNull("status").orWhere("status", "!=", "scheduled");
+      })
+      .limit(40);
+    
+    if (influencers.length === 0) {
+      console.log("No eligible influencers found for outreach.");
+      return;
+    }
+    
+    console.log(`Found ${influencers.length} influencers to prepare for outreach.`);
+    
+    // Prepare data with alternating POC assignments
+    const preparedData = influencers.map((influencer, index) => {
+      // Alternate between Yug and Akshat
+      const poc = index % 2 === 0 ? "Yug" : "Akshat";
+      const poc_email_address = index % 2 === 0 ? "yug@createstir.com" : "akshat@createstir.com";
+      
+      return {
+        user_id: influencer.user_id,
+        username: influencer.username,
+        business_email: influencer.business_email,
+        poc: poc,
+        poc_email_address: poc_email_address,
+        first_email_status: "yet_to_schedule",
+        created_at: new Date(),
+        // updated_at: new Date()
+      };
+    });
+    
+    // Insert data into stir_outreach_dashboard
+    await db("stir_outreach_dashboard").insert(preparedData);
+    
+    // Update status to 'scheduled' in the source table
+    const userIds = influencers.map(inf => inf.user_id);
+    await db("influencer_outreach_verified_email")
+      .whereIn("user_id", userIds)
+      .update({
+        status: "scheduled",
+        // updated_at: new Date()
+      });
+    
+    console.log("Successfully prepared influencers for outreach and updated status.");
+    
+    // Run the campaign by POC
+    if (!campaignCreatedToday) {
+      console.log("Creating campaigns by POC...");
+      const campaignResults = await createCampaignsByPoc();
+      
+      // Set up webhooks for each campaign
+      for (const campaign of campaignResults) {
+        await setupSmartLeadWebhook(campaign.campaignId);
+        console.log(`SmartLead webhook setup completed for ${campaign.poc} campaign`);
+      }
+      
+      campaignCreatedToday = true;
+      console.log("Campaigns created successfully for today.");
+    } else {
+      console.log("Campaigns already created for today. Skipping creation.");
+    }
+    
+    return { success: true, message: "Influencers prepared for outreach and campaigns created." };
+  } catch (error) {
+    console.error("Error preparing influencers for outreach:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Set up cron job to run Monday to Friday at 14:00 IST
+const setupDailyOutreachCron = () => {
+  // '0 14 * * 1-5' - runs at 14:00 on Monday through Friday
+  // For IST, we need to adjust based on server timezone
+  cron.schedule('0 14 * * 1-5', async () => {
+    console.log('Running Daily Outreach Cron Job at 14:00 IST');
+    await prepareInfluencersForOutreach();
+  }, {
+    timezone: "Asia/Kolkata" // Set timezone to IST
+  });
+  
+  console.log("Daily outreach cron job scheduled to run Monday-Friday at 14:00 IST");
+};
+
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/calendly-webhook", calendlyRoutes);
 
-
-// // Your Calendly API token - from your Calendly account settings
-// const CALENDLY_API_TOKEN = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzQxNzc4NjM3LCJqdGkiOiI3NzQ4MmIyNy0xMzNkLTRjZmEtODZlYi1mZmU3N2ExMDI3N2MiLCJ1c2VyX3V1aWQiOiI1YzhmMTYwMy04OWQ5LTQ1N2MtYmEyNS04ZDZiZmM2ZDhjZDMifQ.LZZe3i3-oW3NnLmRxCz35c29P7MeqFQj_vXjb1p-A0dphRFsWCYEpc9PIZ-3011Aoldy46MNEvaecGrKfAPlMg';
-
-// // Your ngrok URL + endpoint
-// const WEBHOOK_URL = 'https://386b-183-83-154-56.ngrok-free.app/api/calendly-webhook';
-
-// // Your organization URI - get this from your Calendly account
-// // Typically looks like: https://api.calendly.com/organizations/YOURORGANIZATIONID
-// const ORGANIZATION_URI = 'https://api.calendly.com/organizations/d18f6dd1-3eb5-4e67-8add-914c9ec7f857';
-
-// // Create a webhook subscription
-// async function createWebhook() {
-//   try {
-//     const response = await axios.post(
-//       'https://api.calendly.com/webhook_subscriptions',
-//       {
-//         url: WEBHOOK_URL,
-//         events: ['invitee.created'], // This event occurs when someone books
-//         organization: ORGANIZATION_URI,
-//         scope: 'organization'
-//       },
-//       {
-//         headers: {
-//           'Content-Type': 'application/json',
-//           'Authorization': `Bearer ${CALENDLY_API_TOKEN}`
-//         }
-//       }
-//     );
-    
-//     console.log('Webhook created successfully:');
-//     console.log(JSON.stringify(response.data, null, 2));
-//   } catch (error) {
-//     console.error('Error creating webhook:');
-//     console.error(error.response ? error.response.data : error.message);
-//   }
-// }
-
-// createWebhook();
-// app.post('/api/calendly-webhook', (req, res) => {
-//   // Log the entire request body to see what Calendly sends
-//   console.log('Webhook received!');
-//   console.log(JSON.stringify(req.body, null, 2));
-  
-//   // Check if this is a booking creation event
-//   if (req.body.event === 'invitee.created') {
-//     console.log('Hi! Someone booked a meeting with you!');
-//     console.log(`Name: ${req.body.payload.invitee.name}`);
-//     console.log(`Email: ${req.body.payload.invitee.email}`);
-//     console.log(`Event Type: ${req.body.payload.event_type.name}`);
-//     console.log(`Event Time: ${req.body.payload.scheduled_event.start_time}`);
-//   }
-  
-//   // Always respond with 200 to acknowledge receipt
-//   res.status(200).send('Webhook received successfully');
-// });
-// Routes
 app.get("/run", async (req, res) => {
   try {
     const campaignId = await runCampaign();
@@ -227,6 +270,19 @@ app.get("/run-by-poc", async (req, res) => {
     res
       .status(500)
       .json({ error: "Failed to start campaigns by POC", details: error.message });
+  }
+});
+
+// Route to test the daily outreach function
+app.get("/test-prepare-influencers", async (req, res) => {
+  try {
+    const result = await prepareInfluencersForOutreach();
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ 
+      error: "Failed to prepare influencers for outreach", 
+      details: error.message 
+    });
   }
 });
 
@@ -292,11 +348,14 @@ app.listen(PORT, async () => {
     console.log("Visit /run to run the server");
     console.log("Visit /run-by-poc to run campaigns separated by POC");
     console.log("Visit /run-followup to start the follow-up email sequence");
+    console.log("Visit /test-prepare-influencers to test the daily outreach preparation");
     console.log("For testing: /run-followup-1, /run-followup-2, /run-followup-3 for specific stages");
-    // createWebhook()
-    // Set up the cron job when the server starts
+    
+    // Set up the cron jobs when the server starts
     setupFollowupEmailCron();
-    console.log("Cron jobs for follow-up emails have been set up (9:00, 9:01, 9:02 AM and 5:00, 5:01, 5:02 PM)");
+    setupDailyOutreachCron();
+    
+    console.log("Cron jobs set up for follow-up emails and daily outreach (14:00 IST, Mon-Fri)");
   } catch (error) {
     console.error("Server initialization error:", error);
   }

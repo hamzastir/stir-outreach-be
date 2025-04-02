@@ -1,4 +1,3 @@
-import { generateEmailBody } from "../utility/generateEmailBody.js";
 import { createAxiosInstance } from "../utility/axiosInstance.js";
 import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
@@ -7,7 +6,7 @@ import { fetchUserInfo, fetchUserPosts } from "./instaApi.js";
 
 let cachedRecipientsByPoc = {};
 const pocEmailAccountMapping = {
-  "saif@createstir.com": 5940901,
+  // "saif@createstir.com": 5940901,
   "yug@createstir.com": 5909762,
   "akshat@createstir.com": 5916763,
 };
