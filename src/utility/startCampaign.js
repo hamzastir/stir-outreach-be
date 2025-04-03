@@ -406,8 +406,8 @@ export const addLeadsToCampaign = async (campaignId, poc = null) => {
         lead_list: validLeads,
         settings: {
           ignore_global_block_list: true,
-          ignore_unsubscribe_list: false,
-          ignore_duplicate_leads_in_other_campaign: false,
+          ignore_unsubscribe_list: true,
+          ignore_duplicate_leads_in_other_campaign: true,
         },
       });
       console.log(`✅ Leads Added Successfully${poc ? ` to ${poc} campaign` : ''}:`, response.data);

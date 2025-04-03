@@ -78,32 +78,7 @@ export async function handleEmailSent(data) {
     const result = await updateQuery;
     console.log('Update result:', result);
 
-    // Schedule a follow-up email after 2 days (or any desired delay)
-    if (result > 0 && data.campaign_id && data.email_stats_id) {
-      console.log('Scheduling follow-up email...');
 
-      // Schedule the follow-up email after 2 days
-      setTimeout(async () => {
-        try {
-          const followUpResponse = await sendSmartleadFollowUp1({
-            campaign_id: data.campaign_id,
-            email_stats_id: data.email_stats_id,
-            reply_message_id: data.message_id,
-            reply_email_time: data.reply_timestamp,
-            reply_email_body: data.content,
-            recipient_email: data.to_email,
-          });
-
-          console.log('Follow-up email sent successfully:', followUpResponse);
-        } catch (error) {
-          console.error('Failed to send follow-up email:', {
-            error: error.message,
-            recipient: data.to_email,
-            campaign: data.campaign_id,
-          });
-        }
-      }, 10000); 
-    }
 
   } catch (error) {
     console.error('Error handling email sent event:', {
@@ -114,50 +89,7 @@ export async function handleEmailSent(data) {
   }
 }
 
-async function sendSmartleadFollowUp1({
-  campaign_id,
-  email_stats_id,
-  reply_message_id,
-  reply_email_time,
-  reply_email_body,
-  recipient_email,
-}) {
-  try {
-    const SMARTLEAD_API_KEY = process.env.SMARTLEAD_API_KEY; // Ensure this is set in your environment
-    const followUpMessage = `
-      <p>Hi there,</p>
-      <p>I wanted to follow up on my previous email. Did you get a chance to review it?</p>
-      <p>If you have any questions or need further information, please let me know. I'd be happy to assist!</p>
-      <p>Looking forward to hearing from you.</p>
-      <p>Best regards,<br/>The Support Team</p>
-    `;
 
-    const response = await axios.post(
-      `https://server.smartlead.ai/api/v1/campaigns/${campaign_id}/reply-email-thread?api_key=${SMARTLEAD_API_KEY}`,
-      {
-        email_stats_id: email_stats_id,
-        email_body: followUpMessage,
-        reply_message_id: reply_message_id,
-        reply_email_time: reply_email_time,
-        reply_email_body: reply_email_body,
-        add_signature: true,
-      }
-    );
-
-    // Log additional tracking information
-    console.log(`Follow-up sent to ${recipient_email} in campaign ${campaign_id}`);
-    console.log('Smartlead API response:', response.data);
-
-    return response.data;
-  } catch (error) {
-    console.error('Failed to send follow-up email:', {
-      error: error.response?.data || error.message,
-      recipient: recipient_email,
-      campaign: campaign_id,
-    });
-    throw new Error('Failed to send follow-up email');
-  }
-}
 export async function handleEmailReply(data) {
   try {
     // Debug log to see the exact structure of incoming data
@@ -229,50 +161,6 @@ export async function handleEmailReply(data) {
   }
 }
 
-async function sendSmartleadFollowUp({
-  campaign_id,
-  email_stats_id,
-  reply_message_id,
-  reply_email_time,
-  reply_email_body,
-  recipient_email
-}) {
-  try {
-    const SMARTLEAD_API_KEY = process.env.SMARTLEAD_API_KEY; // Ensure this is set in your environment
-    const followUpMessage = `
-      <p>Thank you for your response!</p>
-      <p>We appreciate you taking the time to reply. Could you please share more details about your requirements? 
-      We'll make sure to address them promptly.</p>
-      <p>Looking forward to assisting you further.</p>
-      <p>Best regards,<br/>The Support Team</p>
-    `;
-
-    const response = await axios.post(
-      `https://server.smartlead.ai/api/v1/campaigns/${campaign_id}/reply-email-thread?api_key=${SMARTLEAD_API_KEY}`,
-      {
-        email_stats_id: email_stats_id,
-        email_body: followUpMessage,
-        reply_message_id: reply_message_id,
-        reply_email_time: reply_email_time,
-        reply_email_body: reply_email_body,
-        add_signature: true
-      }
-    );
-
-    // Log additional tracking information
-    console.log(`Follow-up sent to ${recipient_email} in campaign ${campaign_id}`);
-    console.log('Smartlead API response:', response.data);
-
-    return response.data;
-  } catch (error) {
-    console.error('Failed to send follow-up email:', {
-      error: error.response?.data || error.message,
-      recipient: recipient_email,
-      campaign: campaign_id
-    });
-    throw new Error('Failed to send follow-up email');
-  }
-}
 
 export async function handleLeadUnsubscribed(data) {
   try {

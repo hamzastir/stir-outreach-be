@@ -46,12 +46,23 @@ router.get("/stats", async (req, res) => {
         dateRange: { from: "", to: "" },
         stats: {
           totalEmails: 0,
+          totalDelivered: 0,
           totalReplies: 0,
           totalCalendlyClicks: 0,
           totalOnboardingClicks: 0,
           totalVideoCallsScheduled: 0,
           totalOnboardingsCompleted: 0,
           totalUnsubscribes: 0,
+          // Add follow-up metrics
+          totalFollowUps: {
+            followUp1: 0,
+            followUp2: 0,
+            followUp3: 0,
+            onboardingFollowUp1: 0,
+            onboardingFollowUp2: 0,
+            calendlyFollowUp1: 0,
+            calendlyFollowUp2: 0
+          },
           replyRate: 0,
           calendlyClickRate: 0,
           onboardingClickRate: 0
@@ -129,65 +140,75 @@ router.get("/stats", async (req, res) => {
     }
     
     // Helper function to parse date and time strings
-   // Helper function to parse date and time strings
-const parseDateTime = (dateStr, timeStr) => {
-  if (!dateStr) return null;
-  
-  try {
-    let date;
-    
-    // Check if dateStr is already a Date object
-    if (dateStr instanceof Date) {
-      date = dateStr;
-    } 
-    // Check if it's a string with the 'T' character (ISO format)
-    else if (typeof dateStr === 'string' && dateStr.includes('T')) {
-      date = new Date(dateStr);
-    } 
-    // Regular date string (YYYY-MM-DD)
-    else if (typeof dateStr === 'string') {
-      // Split date string into components
-      const [year, month, day] = dateStr.split('-').map(num => parseInt(num, 10));
+    const parseDateTime = (dateStr, timeStr) => {
+      if (!dateStr) return null;
       
-      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
-      
-      date = new Date(year, month - 1, day);
-    }
-    // If it's neither a Date nor a string, return null
-    else {
-      return null;
-    }
-    
-    // Add time if provided
-    if (timeStr && typeof timeStr === 'string') {
-      const timeParts = timeStr.split(':');
-      if (timeParts.length >= 2) {
-        const hour = parseInt(timeParts[0], 10);
-        const minute = parseInt(timeParts[1], 10);
-        const second = timeParts.length > 2 ? parseInt(timeParts[2], 10) : 0;
+      try {
+        let date;
         
-        if (!isNaN(hour) && !isNaN(minute) && !isNaN(second)) {
-          date.setHours(hour, minute, second);
+        // Check if dateStr is already a Date object
+        if (dateStr instanceof Date) {
+          date = dateStr;
+        } 
+        // Check if it's a string with the 'T' character (ISO format)
+        else if (typeof dateStr === 'string' && dateStr.includes('T')) {
+          date = new Date(dateStr);
+        } 
+        // Regular date string (YYYY-MM-DD)
+        else if (typeof dateStr === 'string') {
+          // Split date string into components
+          const [year, month, day] = dateStr.split('-').map(num => parseInt(num, 10));
+          
+          if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+          
+          date = new Date(year, month - 1, day);
         }
+        // If it's neither a Date nor a string, return null
+        else {
+          return null;
+        }
+        
+        // Add time if provided
+        if (timeStr && typeof timeStr === 'string') {
+          const timeParts = timeStr.split(':');
+          if (timeParts.length >= 2) {
+            const hour = parseInt(timeParts[0], 10);
+            const minute = parseInt(timeParts[1], 10);
+            const second = timeParts.length > 2 ? parseInt(timeParts[2], 10) : 0;
+            
+            if (!isNaN(hour) && !isNaN(minute) && !isNaN(second)) {
+              date.setHours(hour, minute, second);
+            }
+          }
+        }
+        
+        return date;
+      } catch (err) {
+        console.warn(`Error parsing date: ${dateStr} ${timeStr}`, err);
+        return null;
       }
-    }
-    
-    return date;
-  } catch (err) {
-    console.warn(`Error parsing date: ${dateStr} ${timeStr}`, err);
-    return null;
-  }
-};
+    };
     
     // Initialize statistics
     const stats = {
-      totalEmails: 0,
+      totalEmails: 0,            // This will count both scheduled + sent (first_email_status)
+      totalDelivered: 0,         // This will count only sent (first_email_status = 'sent')
       totalReplies: 0,
       totalCalendlyClicks: 0,
       totalOnboardingClicks: 0,
       totalVideoCallsScheduled: 0,
       totalOnboardingsCompleted: 0,
-      totalUnsubscribes: 0
+      totalUnsubscribes: 0,
+      // Add follow-up metrics
+      totalFollowUps: {
+        followUp1: 0,
+        followUp2: 0,
+        followUp3: 0,
+        onboardingFollowUp1: 0,
+        onboardingFollowUp2: 0,
+        calendlyFollowUp1: 0,
+        calendlyFollowUp2: 0
+      }
     };
     
     // Initialize recent activity array
@@ -208,18 +229,31 @@ const parseDateTime = (dateStr, timeStr) => {
           calendlyClicks: 0,
           onboardingClicks: 0,
           videoCallsScheduled: 0,
-          onboardingsCompleted: 0
+          onboardingsCompleted: 0,
+          // Add follow-up tracking
+          followUp1Sent: 0,
+          followUp2Sent: 0,
+          followUp3Sent: 0,
+          onboardingFollowUp1Sent: 0,
+          onboardingFollowUp2Sent: 0,
+          calendlyFollowUp1Sent: 0,
+          calendlyFollowUp2Sent: 0
         };
       });
       
       // Process each user's data
       users.forEach(user => {
-        // Process email sent
-        if (user.first_email_date && user.first_email_status === 'sent') {
+        // Process email sent (both scheduled + sent)
+        if (user.first_email_date && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
           const emailDate = parseDateTime(user.first_email_date, user.first_email_time);
           
           if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
+            
+            // Count as delivered only if status is 'sent'
+            if (user.first_email_status === 'sent') {
+              stats.totalDelivered++;
+            }
             
             // Add to hourly chart data
             const hour = emailDate.getHours();
@@ -243,6 +277,239 @@ const parseDateTime = (dateStr, timeStr) => {
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
               timestamp: emailDate
+            });
+          }
+        }
+        
+        // Process follow-up emails
+        
+        // Follow-up 1
+        if (user.follow_up_1_date && user.follow_up_1_status) {
+          const followUpDate = parseDateTime(user.follow_up_1_date, user.follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp1++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].followUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_1_sent',
+              activityDate: user.follow_up_1_date,
+              activityTime: user.follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Follow-up 2
+        if (user.follow_up_2_date && user.follow_up_2_status) {
+          const followUpDate = parseDateTime(user.follow_up_2_date, user.follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp2++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].followUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_2_sent',
+              activityDate: user.follow_up_2_date,
+              activityTime: user.follow_up_2_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Follow-up 3
+        if (user.follow_up_3_date && user.follow_up_3_status) {
+          const followUpDate = parseDateTime(user.follow_up_3_date, user.follow_up_3_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp3++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].followUp3Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_3_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_3_sent',
+              activityDate: user.follow_up_3_date,
+              activityTime: user.follow_up_3_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Onboarding Follow-up 1
+        if (user.onboarding_follow_up_1_date && user.onboarding_follow_up_1_status) {
+          const followUpDate = parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.onboardingFollowUp1++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].onboardingFollowUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_follow_up_1_sent',
+              activityDate: user.onboarding_follow_up_1_date,
+              activityTime: user.onboarding_follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Onboarding Follow-up 2
+        if (user.onboarding_follow_up_2_date && user.onboarding_follow_up_2_status) {
+          const followUpDate = parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.onboardingFollowUp2++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].onboardingFollowUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_follow_up_2_sent',
+              activityDate: user.onboarding_follow_up_2_date,
+              activityTime: user.onboarding_follow_up_2_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Calendly Follow-up 1
+        if (user.calendly_follow_up_1_date && user.calendly_follow_up_1_status) {
+          const followUpDate = parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.calendlyFollowUp1++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].calendlyFollowUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `calendly_follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'calendly_follow_up_1_sent',
+              activityDate: user.calendly_follow_up_1_date,
+              activityTime: user.calendly_follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Calendly Follow-up 2
+        if (user.calendly_follow_up_2_date && user.calendly_follow_up_2_status) {
+          const followUpDate = parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.calendlyFollowUp2++;
+            
+            // Add to hourly chart data
+            const hour = followUpDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].calendlyFollowUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `calendly_follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'calendly_follow_up_2_sent',
+              activityDate: user.calendly_follow_up_2_date,
+              activityTime: user.calendly_follow_up_2_time,
+              timestamp: followUpDate
             });
           }
         }
@@ -345,49 +612,40 @@ const parseDateTime = (dateStr, timeStr) => {
             });
           }
         }
+        
         // Process completed onboardings
-if (user.onboarding_date && user.onboarding_status === 'completed') {
-  const onboardingDate = parseDateTime(user.onboarding_date, null);
-  
-  if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
-    stats.totalOnboardingsCompleted++;
-    
-    // For hourly data
-    const hour = onboardingDate.getHours();
-    const hourIndex = chartData.findIndex(data => {
-      const dataHour = new Date(data.date).getHours();
-      return dataHour === hour;
-    });
-    
-    if (hourIndex !== -1) {
-      chartData[hourIndex].onboardingsCompleted++;
-    }
-    
-    // OR for daily data
-    // Format the date to yyyy-MM-dd for comparison
-    const formattedDate = format(onboardingDate, 'yyyy-MM-dd');
-    
-    // Find the matching day in chartData
-    const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-    
-    if (dayIndex !== -1) {
-      chartData[dayIndex].onboardingsCompleted++;
-    }
-    
-    // Add to recent activity
-    recentActivity.push({
-      id: `onboarding_complete_${user.id}`,
-      userId: user.user_id,
-      username: user.username || 'Unknown',
-      email: user.business_email || 'No email',
-      poc: user.poc || 'Unknown POC',
-      activityType: 'onboarding_completed',
-      activityDate: user.onboarding_date,
-      activityTime: null,
-      timestamp: onboardingDate
-    });
-  }
-}
+        if (user.onboarding_date && user.onboarding_status === 'completed') {
+          const onboardingDate = parseDateTime(user.onboarding_date, null);
+          
+          if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
+            stats.totalOnboardingsCompleted++;
+            
+            // For hourly data
+            const hour = onboardingDate.getHours();
+            const hourIndex = chartData.findIndex(data => {
+              const dataHour = new Date(data.date).getHours();
+              return dataHour === hour;
+            });
+            
+            if (hourIndex !== -1) {
+              chartData[hourIndex].onboardingsCompleted++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_complete_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_completed',
+              activityDate: user.onboarding_date,
+              activityTime: null,
+              timestamp: onboardingDate
+            });
+          }
+        }
+        
         // Process video calls
         if (user.video_call_date && user.video_call_status === 'scheduled') {
           const callDate = parseDateTime(user.video_call_date, null);
@@ -442,10 +700,10 @@ if (user.onboarding_date && user.onboarding_status === 'completed') {
         return b.timestamp - a.timestamp;
       });
       
-      // Calculate rates
-      stats.replyRate = stats.totalEmails > 0 ? (stats.totalReplies / stats.totalEmails) * 100 : 0;
-      stats.calendlyClickRate = stats.totalEmails > 0 ? (stats.totalCalendlyClicks / stats.totalEmails) * 100 : 0;
-      stats.onboardingClickRate = stats.totalEmails > 0 ? (stats.totalOnboardingClicks / stats.totalEmails) * 100 : 0;
+      // Calculate rates - use totalDelivered instead of totalEmails for more accurate rates
+      stats.replyRate = stats.totalDelivered > 0 ? (stats.totalReplies / stats.totalDelivered) * 100 : 0;
+      stats.calendlyClickRate = stats.totalDelivered > 0 ? (stats.totalCalendlyClicks / stats.totalDelivered) * 100 : 0;
+      stats.onboardingClickRate = stats.totalDelivered > 0 ? (stats.totalOnboardingClicks / stats.totalDelivered) * 100 : 0;
       
       // Return the hourly data
       return res.json({
@@ -471,18 +729,31 @@ if (user.onboarding_date && user.onboarding_status === 'completed') {
           calendlyClicks: 0,
           onboardingClicks: 0,
           videoCallsScheduled: 0,
-          onboardingsCompleted: 0
+          onboardingsCompleted: 0,
+          // Add follow-up tracking
+          followUp1Sent: 0,
+          followUp2Sent: 0,
+          followUp3Sent: 0,
+          onboardingFollowUp1Sent: 0,
+          onboardingFollowUp2Sent: 0,
+          calendlyFollowUp1Sent: 0,
+          calendlyFollowUp2Sent: 0
         };
       });
       
       // Process each user's data
       users.forEach(user => {
-        // Process email sent
-        if (user.first_email_date && user.first_email_status === 'sent') {
+        // Process email sent (both scheduled + sent)
+        if (user.first_email_date && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
           const emailDate = parseDateTime(user.first_email_date, user.first_email_time);
           
           if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
+            
+            // Count as delivered only if status is 'sent'
+            if (user.first_email_status === 'sent') {
+              stats.totalDelivered++;
+            }
             
             // Format the date to yyyy-MM-dd for comparison
             const formattedDate = format(emailDate, 'yyyy-MM-dd');
@@ -505,6 +776,232 @@ if (user.onboarding_date && user.onboarding_status === 'completed') {
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
               timestamp: emailDate
+            });
+          }
+        }
+        
+        // Process follow-up emails
+        
+        // Follow-up 1
+        if (user.follow_up_1_date && user.follow_up_1_status) {
+          const followUpDate = parseDateTime(user.follow_up_1_date, user.follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp1++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].followUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_1_sent',
+              activityDate: user.follow_up_1_date,
+              activityTime: user.follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Follow-up 2
+        if (user.follow_up_2_date && user.follow_up_2_status) {
+          const followUpDate = parseDateTime(user.follow_up_2_date, user.follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp2++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].followUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_2_sent',
+              activityDate: user.follow_up_2_date,
+              activityTime: user.follow_up_2_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Follow-up 3
+        if (user.follow_up_3_date && user.follow_up_3_status) {
+          const followUpDate = parseDateTime(user.follow_up_3_date, user.follow_up_3_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.followUp3++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].followUp3Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `follow_up_3_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'follow_up_3_sent',
+              activityDate: user.follow_up_3_date,
+              activityTime: user.follow_up_3_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Onboarding Follow-up 1
+        if (user.onboarding_follow_up_1_date && user.onboarding_follow_up_1_status) {
+          const followUpDate = parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.onboardingFollowUp1++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].onboardingFollowUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_follow_up_1_sent',
+              activityDate: user.onboarding_follow_up_1_date,
+              activityTime: user.onboarding_follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Onboarding Follow-up 2
+        if (user.onboarding_follow_up_2_date && user.onboarding_follow_up_2_status) {
+          const followUpDate = parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.onboardingFollowUp2++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].onboardingFollowUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_follow_up_2_sent',
+              activityDate: user.onboarding_follow_up_2_date,
+              activityTime: user.onboarding_follow_up_2_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Calendly Follow-up 1
+        if (user.calendly_follow_up_1_date && user.calendly_follow_up_1_status) {
+          const followUpDate = parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.calendlyFollowUp1++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].calendlyFollowUp1Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `calendly_follow_up_1_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'calendly_follow_up_1_sent',
+              activityDate: user.calendly_follow_up_1_date,
+              activityTime: user.calendly_follow_up_1_time,
+              timestamp: followUpDate
+            });
+          }
+        }
+        
+        // Calendly Follow-up 2
+        if (user.calendly_follow_up_2_date && user.calendly_follow_up_2_status) {
+          const followUpDate = parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time);
+          
+          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+            stats.totalFollowUps.calendlyFollowUp2++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].calendlyFollowUp2Sent++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `calendly_follow_up_2_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'calendly_follow_up_2_sent',
+              activityDate: user.calendly_follow_up_2_date,
+              activityTime: user.calendly_follow_up_2_time,
+              timestamp: followUpDate
             });
           }
         }
@@ -605,6 +1102,38 @@ if (user.onboarding_date && user.onboarding_status === 'completed') {
           }
         }
         
+        // Process completed onboardings
+        if (user.onboarding_date && user.onboarding_status === 'completed') {
+          const onboardingDate = parseDateTime(user.onboarding_date, null);
+          
+          if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
+            stats.totalOnboardingsCompleted++;
+            
+            // Format the date to yyyy-MM-dd for comparison
+            const formattedDate = format(onboardingDate, 'yyyy-MM-dd');
+            
+            // Find the matching day in chartData
+            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+            
+            if (dayIndex !== -1) {
+              chartData[dayIndex].onboardingsCompleted++;
+            }
+            
+            // Add to recent activity
+            recentActivity.push({
+              id: `onboarding_complete_${user.id}`,
+              userId: user.user_id,
+              username: user.username || 'Unknown',
+              email: user.business_email || 'No email',
+              poc: user.poc || 'Unknown POC',
+              activityType: 'onboarding_completed',
+              activityDate: user.onboarding_date,
+              activityTime: null,
+              timestamp: onboardingDate
+            });
+          }
+        }
+        
         // Process video calls
         if (user.video_call_date && user.video_call_status === 'scheduled') {
           const callDate = parseDateTime(user.video_call_date, null);
@@ -655,10 +1184,10 @@ if (user.onboarding_date && user.onboarding_status === 'completed') {
         return b.timestamp - a.timestamp;
       });
       
-      // Calculate rates
-      stats.replyRate = stats.totalEmails > 0 ? (stats.totalReplies / stats.totalEmails) * 100 : 0;
-      stats.calendlyClickRate = stats.totalEmails > 0 ? (stats.totalCalendlyClicks / stats.totalEmails) * 100 : 0;
-      stats.onboardingClickRate = stats.totalEmails > 0 ? (stats.totalOnboardingClicks / stats.totalEmails) * 100 : 0;
+      // Calculate rates - use totalDelivered instead of totalEmails for more accurate rates
+      stats.replyRate = stats.totalDelivered > 0 ? (stats.totalReplies / stats.totalDelivered) * 100 : 0;
+      stats.calendlyClickRate = stats.totalDelivered > 0 ? (stats.totalCalendlyClicks / stats.totalDelivered) * 100 : 0;
+      stats.onboardingClickRate = stats.totalDelivered > 0 ? (stats.totalOnboardingClicks / stats.totalDelivered) * 100 : 0;
       
       // Return the daily data
       return res.json({
@@ -729,52 +1258,10 @@ router.get("/", async (req, res) => {
   }
 });
 
-
 /**
- * GET /api/dashboard/pocs
- * Get list of POCs for filter dropdown
+ * GET /api/dashboard/recent-activity
+ * Get recent activity for the dashboard
  */
-router.get("/pocs", async (req, res) => {
-  try {
-    const results = await db("stir_outreach_dashboard")
-      .distinct("poc")
-      .whereNotNull("poc")
-      .orderBy("poc");
-    
-    const pocs = results.map(item => item.poc);
-    res.json(pocs);
-  } catch (error) {
-    console.error("Error fetching POCs:", error);
-    res.status(500).json({ error: "Failed to fetch POCs" });
-  }
-});
-
-/**
- * GET /api/dashboard
- * Main dashboard endpoint for backwards compatibility
- */
-router.get("/", async (req, res) => {
-  try {
-    // Redirect to the stats endpoint
-    const {
-      timeRange = "last7days",
-      dateFrom,
-      dateTo,
-      poc = "all",
-    } = req.query;
-
-    let redirectUrl = `/api/dashboard/stats?timeRange=${timeRange}&poc=${poc}`;
-    
-    if (timeRange === "custom" && dateFrom && dateTo) {
-      redirectUrl += `&dateFrom=${dateFrom}&dateTo=${dateTo}`;
-    }
-    
-    res.redirect(redirectUrl);
-  } catch (error) {
-    console.error("Error processing dashboard request:", error);
-    res.status(500).json({ error: "Failed to process dashboard request" });
-  }
-});
 router.get("/recent-activity", async (req, res) => {
   try {
     // Get all users data
@@ -806,6 +1293,118 @@ router.get("/recent-activity", async (req, res) => {
             activityDate: user.first_email_date,
             activityTime: user.first_email_time,
             dateString: `${user.first_email_date} ${user.first_email_time || '00:00:00'}`
+          });
+        }
+        
+        // Add follow-up 1 activity
+        if (user.follow_up_1_date && user.follow_up_1_status) {
+          allActivities.push({
+            id: `follow_up_1_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'follow_up_1_sent',
+            activityDate: user.follow_up_1_date,
+            activityTime: user.follow_up_1_time,
+            dateString: `${user.follow_up_1_date} ${user.follow_up_1_time || '00:00:00'}`
+          });
+        }
+        
+        // Add follow-up 2 activity
+        if (user.follow_up_2_date && user.follow_up_2_status) {
+          allActivities.push({
+            id: `follow_up_2_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'follow_up_2_sent',
+            activityDate: user.follow_up_2_date,
+            activityTime: user.follow_up_2_time,
+            dateString: `${user.follow_up_2_date} ${user.follow_up_2_time || '00:00:00'}`
+          });
+        }
+        
+        // Add follow-up 3 activity
+        if (user.follow_up_3_date && user.follow_up_3_status) {
+          allActivities.push({
+            id: `follow_up_3_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'follow_up_3_sent',
+            activityDate: user.follow_up_3_date,
+            activityTime: user.follow_up_3_time,
+            dateString: `${user.follow_up_3_date} ${user.follow_up_3_time || '00:00:00'}`
+          });
+        }
+        
+        // Add onboarding follow-up 1 activity
+        if (user.onboarding_follow_up_1_date && user.onboarding_follow_up_1_status) {
+          allActivities.push({
+            id: `onboarding_follow_up_1_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_follow_up_1_sent',
+            activityDate: user.onboarding_follow_up_1_date,
+            activityTime: user.onboarding_follow_up_1_time,
+            dateString: `${user.onboarding_follow_up_1_date} ${user.onboarding_follow_up_1_time || '00:00:00'}`
+          });
+        }
+        
+        // Add onboarding follow-up 2 activity
+        if (user.onboarding_follow_up_2_date && user.onboarding_follow_up_2_status) {
+          allActivities.push({
+            id: `onboarding_follow_up_2_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_follow_up_2_sent',
+            activityDate: user.onboarding_follow_up_2_date,
+            activityTime: user.onboarding_follow_up_2_time,
+            dateString: `${user.onboarding_follow_up_2_date} ${user.onboarding_follow_up_2_time || '00:00:00'}`
+          });
+        }
+        
+        // Add calendly follow-up 1 activity
+        if (user.calendly_follow_up_1_date && user.calendly_follow_up_1_status) {
+          allActivities.push({
+            id: `calendly_follow_up_1_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'calendly_follow_up_1_sent',
+            activityDate: user.calendly_follow_up_1_date,
+            activityTime: user.calendly_follow_up_1_time,
+            dateString: `${user.calendly_follow_up_1_date} ${user.calendly_follow_up_1_time || '00:00:00'}`
+          });
+        }
+        
+        // Add calendly follow-up 2 activity
+        if (user.calendly_follow_up_2_date && user.calendly_follow_up_2_status) {
+          allActivities.push({
+            id: `calendly_follow_up_2_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'calendly_follow_up_2_sent',
+            activityDate: user.calendly_follow_up_2_date,
+            activityTime: user.calendly_follow_up_2_time,
+            dateString: `${user.calendly_follow_up_2_date} ${user.calendly_follow_up_2_time || '00:00:00'}`
           });
         }
         
@@ -854,6 +1453,22 @@ router.get("/recent-activity", async (req, res) => {
             activityDate: user.onboarding_click_date,
             activityTime: user.onboarding_click_time,
             dateString: `${user.onboarding_click_date} ${user.onboarding_click_time || '00:00:00'}`
+          });
+        }
+        
+        // Add onboarding completion activity
+        if (user.onboarding_date && user.onboarding_status === 'completed') {
+          allActivities.push({
+            id: `onboarding_complete_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            name: user.name || user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_completed',
+            activityDate: user.onboarding_date,
+            activityTime: null,
+            dateString: `${user.onboarding_date} 00:00:00`
           });
         }
         

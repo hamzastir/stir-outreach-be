@@ -3,8 +3,6 @@ dotenv.config();
 export const config = {
   API_KEY: process.env.SMARTLEAD_API_KEY,
   BASE_URL: "https://server.smartlead.ai/api/v1", 
-  CAMPAIGN_ID: process.env.CAMPAIGN_ID,
-  EMAIL_ACCOUNT_ID: process.env.EMAIL_ACCOUNT_ID,
   CALENDLY_BASE_URL: process.env.CALENDLY_URL,
   ONBOARDING_BASE_URL: process.env.ONBOARDING_URL,
   MAX_RETRIES: 3,
