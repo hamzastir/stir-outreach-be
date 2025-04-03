@@ -145,8 +145,16 @@ const hasLeadReplied = (messageHistory) => {
  * Sends a follow-up email to the latest message in the thread.
  * @param {number} followUpNumber - Which follow-up this is (1, 2, or 3)
  */
+// In the sendFollowUpEmail function, update the URL format in each email template
+
 const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, followUpNumber = 1) => {
   console.log(`Sending follow-up #${followUpNumber} to ${username}`);
+  
+  // Create the dynamic URL with encoded parameters
+  const email = encodeURIComponent(latestMessage.recipient_email || "");
+  const name = encodeURIComponent(username || "");
+  const id = encodeURIComponent(campaignId || "");
+  const dynamicUrl = `https://www.createstir.com/onboard?email=${email}&name=${name}&id=${id}`;
   
   let emailBody;
   
@@ -156,7 +164,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
       <p>Hey @${username},</p>
       Just a friendly nudge – haven't heard back from you. Figured I'd check in before you get completely lost in your next big movie review. <br><br>
   Seriously though, I think you would love what we're building at Stir. It's all about connecting passionate film lovers like you with filmmakers and studios. Think of early access, collabs, and a straight forward way to streamline your influence.<br><br>
-  Why miss out? Let's chat when you have even 15 minutes. <a href="https://createstir.com/calendly">createstir.com/calendly</a><br><br>
+  Why miss out? Let's chat when you have even 15 minutes. <a href="${dynamicUrl}">createstir.com/calendly</a><br><br>
   Best,<br>${poc}
     `;
   } 
@@ -164,7 +172,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
     emailBody = `
       <p>Hi @${username},</p>
       I wanted to check in quickly as I know how emails can sometimes get buried in the mix. I'm reaching out about Stir, an invite-only platform connecting influencers like yourself with early access to unreleased films and opportunities to collaborate directly with leading studios.<br><br>
-  Would love to connect if you think this might be a good fit for you. Let's chat for 15 minutes. <a href="https://createstir.com/calendly">createstir.com/calendly</a><br><br>
+  Would love to connect if you think this might be a good fit for you. Let's chat for 15 minutes. <a href="${dynamicUrl}">createstir.com/calendly</a><br><br>
   Best,<br>${poc}
     `;
   }
@@ -193,7 +201,6 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
     replyRequestBody
   );
 };
-
 /**
  * Helper function to get current date and time in IST
  * @returns {Object} Object with date and time properties in IST
