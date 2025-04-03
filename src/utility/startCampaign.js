@@ -31,7 +31,7 @@ export const withRetry = async (operation, name) => {
   }
 };
 
-async function getUsersToSchedule(pocFilter = null) {
+async function getUsersToSchedule(pocFilter = null, limit = null) {
   try {
     try {
       await db.raw('SELECT 1');
@@ -58,7 +58,9 @@ async function getUsersToSchedule(pocFilter = null) {
     if (pocFilter) {
       query = query.andWhere("poc", pocFilter);
     }
-    
+    if (limit) {
+      query = query.limit(limit);
+    }
     const users = await query;
 
     console.log(`Users fetched from database: ${users.length} users${pocFilter ? ` for POC ${pocFilter}` : ''}`);
@@ -152,7 +154,7 @@ export async function prepareRecipients(poc = null) {
   }
 
   try {
-    const usersToSchedule = await getUsersToSchedule(poc);
+    const usersToSchedule = await getUsersToSchedule(poc, 20);
 
     if (!usersToSchedule || usersToSchedule.length === 0) {
       console.log(`No users found to schedule ${poc ? `for POC ${poc}` : ''}`);
