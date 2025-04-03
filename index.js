@@ -151,13 +151,30 @@ const prepareInfluencersForOutreach = async () => {
     
     if (influencers.length === 0) {
       console.log("No eligible influencers found for outreach.");
-      return;
+      return { success: false, message: "No eligible influencers found." };
     }
     
     console.log(`Found ${influencers.length} influencers to prepare for outreach.`);
     
-    // Prepare data with alternating POC assignments
-    const preparedData = influencers.map((influencer, index) => {
+    // Get existing usernames to avoid duplicates
+    const existingUsernames = await db("stir_outreach_dashboard")
+      .select("username")
+      .whereIn("username", influencers.map(i => i.username));
+    
+    const existingUsernameSet = new Set(existingUsernames.map(e => e.username));
+    
+    // Filter out influencers that already exist in the dashboard
+    const newInfluencers = influencers.filter(inf => !existingUsernameSet.has(inf.username));
+    
+    if (newInfluencers.length === 0) {
+      console.log("All found influencers are already in the outreach dashboard.");
+      return { success: true, message: "No new influencers to add." };
+    }
+    
+    console.log(`Preparing ${newInfluencers.length} new influencers for outreach.`);
+    
+    // Divide influencers between POCs - alternating assignment
+    const preparedData = newInfluencers.map((influencer, index) => {
       // Alternate between Yug and Akshat
       const poc = index % 2 === 0 ? "Yug" : "Akshat";
       const poc_email_address = index % 2 === 0 ? "yug@createstir.com" : "akshat@createstir.com";
@@ -169,27 +186,25 @@ const prepareInfluencersForOutreach = async () => {
         poc: poc,
         poc_email_address: poc_email_address,
         first_email_status: "yet_to_schedule",
-        created_at: new Date(),
-        // updated_at: new Date()
+        created_at: new Date()
       };
     });
     
     // Insert data into stir_outreach_dashboard
-    await db("stir_outreach_dashboard").insert(preparedData);
-    
-    // Update status to 'scheduled' in the source table
-    const userIds = influencers.map(inf => inf.user_id);
-    await db("influencer_outreach_verified_email")
-      .whereIn("user_id", userIds)
-      .update({
-        status: "scheduled",
-        // updated_at: new Date()
-      });
-    
-    console.log("Successfully prepared influencers for outreach and updated status.");
+    if (preparedData.length > 0) {
+      await db("stir_outreach_dashboard").insert(preparedData);
+      
+      // Update status to 'scheduled' in the source table
+      const userIds = newInfluencers.map(inf => inf.user_id);
+      await db("influencer_outreach_verified_email")
+        .whereIn("user_id", userIds)
+        .update({ status: "scheduled" });
+      
+      console.log(`✅ Updated ${userIds.length} records with status 'scheduled' in source table`);
+    }
     
     // Run the campaign by POC
-    if (!campaignCreatedToday) {
+    if (!campaignCreatedToday && preparedData.length > 0) {
       console.log("Creating campaigns by POC...");
       const campaignResults = await createCampaignsByPoc();
       
@@ -202,10 +217,14 @@ const prepareInfluencersForOutreach = async () => {
       campaignCreatedToday = true;
       console.log("Campaigns created successfully for today.");
     } else {
-      console.log("Campaigns already created for today. Skipping creation.");
+      console.log("No new campaigns needed or campaigns already created for today.");
     }
     
-    return { success: true, message: "Influencers prepared for outreach and campaigns created." };
+    return { 
+      success: true, 
+      message: `${preparedData.length} influencers prepared for outreach.`, 
+      campaignsCreated: campaignCreatedToday 
+    };
   } catch (error) {
     console.error("Error preparing influencers for outreach:", error);
     return { success: false, error: error.message };

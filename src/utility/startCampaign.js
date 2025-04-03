@@ -444,15 +444,23 @@ export const createCampaignSequence = async (campaignId, poc = null) => {
             seq_delay_details: { delay_in_days: 0 },
             seq_variants: [
               {
-                subject: `Stir <> @{{first_name}} | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
-                email_body: `{Hi|Hey|Hello} @{{first_name}}, I’m {{poc}} <br>
-                {{snippet1}}<br>
-                 We’re building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
+                subject: `Stir <> @{{first_name}}
+ | {Curated collabs with filmmakers|We're an invite-only platform for film influencers}`,
+                email_body: `{Hi|Hey|Hello} @{{first_name}}
+, I'm {{poc}}
+ <br>
+                {{snippet1}}
+<br>
+                 We're building something exciting at <b>Stir</b>—an invite-only marketplace to connect influencers like you with indie filmmakers and major studios, offering early access to upcoming releases. <br>
 What makes us unique? Vetted clients. Built-in AI. Fast payments. A flat 10% take rate.<br>
- {I’d love to hear your thoughts and see if this is something you’d like to explore!|I'd love to hear your story and see if Stir is the right fit for you!}<br>
-{No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="{{calendlyUrl}}">createstir.com/calendly</a>. Or if you’re ready to dive in, you can also onboard here: <a href="{{onboardingUrl}}">createstir.com/onboard</a>.<br>
- {Best,|Cheers,|Viva cinema,|Regards,}<br>{{poc}}<br>VP of Stellar Beginnings!<br>
-PS: {{snippet2}}`,
+ {I'd love to hear your thoughts and see if this is something you'd like to explore!|I'd love to hear your story and see if Stir is the right fit for you!}<br>
+{No pressure|No rush at all|At your convenience}—feel free to reply to this email or set up a quick call here: <a href="{{calendlyUrl}}
+">createstir.com/calendly</a>. Or if you're ready to dive in, you can also onboard here: <a href="{{onboardingUrl}}
+">createstir.com/onboard</a>.<br>
+ {Best,|Cheers,|Viva cinema,|Regards,}<br>{{poc}}
+<br>VP of Stellar Beginnings!<br>
+PS: {{snippet2}}
+`,
                 variant_label: "Default",
               },
             ],

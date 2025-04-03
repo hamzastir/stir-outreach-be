@@ -9,20 +9,12 @@ import {
   startOfMonth, 
   endOfMonth, 
   eachDayOfInterval,
-  addDays,
-  isSameDay,
   eachHourOfInterval,
   isWithinInterval,
-  addMonths,
-  
-  formatDistance, 
-  parseISO, 
-  
   subMonths,
-  isValid
 } from "date-fns";
 
-const router = express.Router();
+const router = express.Router();  
 
 /**
  * GET /api/dashboard/stats
@@ -353,7 +345,49 @@ const parseDateTime = (dateStr, timeStr) => {
             });
           }
         }
-        
+        // Process completed onboardings
+if (user.onboarding_date && user.onboarding_status === 'completed') {
+  const onboardingDate = parseDateTime(user.onboarding_date, null);
+  
+  if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
+    stats.totalOnboardingsCompleted++;
+    
+    // For hourly data
+    const hour = onboardingDate.getHours();
+    const hourIndex = chartData.findIndex(data => {
+      const dataHour = new Date(data.date).getHours();
+      return dataHour === hour;
+    });
+    
+    if (hourIndex !== -1) {
+      chartData[hourIndex].onboardingsCompleted++;
+    }
+    
+    // OR for daily data
+    // Format the date to yyyy-MM-dd for comparison
+    const formattedDate = format(onboardingDate, 'yyyy-MM-dd');
+    
+    // Find the matching day in chartData
+    const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+    
+    if (dayIndex !== -1) {
+      chartData[dayIndex].onboardingsCompleted++;
+    }
+    
+    // Add to recent activity
+    recentActivity.push({
+      id: `onboarding_complete_${user.id}`,
+      userId: user.user_id,
+      username: user.username || 'Unknown',
+      email: user.business_email || 'No email',
+      poc: user.poc || 'Unknown POC',
+      activityType: 'onboarding_completed',
+      activityDate: user.onboarding_date,
+      activityTime: null,
+      timestamp: onboardingDate
+    });
+  }
+}
         // Process video calls
         if (user.video_call_date && user.video_call_status === 'scheduled') {
           const callDate = parseDateTime(user.video_call_date, null);
