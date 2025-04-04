@@ -422,7 +422,8 @@ export const addLeadsToCampaign = async (campaignId, poc = null) => {
         .whereIn("business_email", scheduledEmails)
         .update({ first_email_status: "scheduled", campaign_id: campaignId });
 
-      console.log(`✅ Updated ${scheduledEmails.length} records with first_email_status 'scheduled' in DB${poc ? ` for ${poc}` : ''}`);
+      console.log(`✅ Updated ${scheduledEmails.length} records with first_em
+        ail_status 'scheduled' in DB${poc ? ` for ${poc}` : ''}`);
     }
 
     return response;
