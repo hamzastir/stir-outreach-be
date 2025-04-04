@@ -145,10 +145,10 @@ const sendCalendlyConfirmationEmail = async (campaignId, email, username, poc, m
     
     // Create email body for confirmation
     const emailBody = `
-      <p>Hey @${username},</p>
-      <p>Thank you for scheduling a meeting! I'm looking forward to our chat on ${formattedDate} at ${formattedTime} and learning more about how we can work together.</p>
-      <p>Let me know if you have any questions before we connect. See you soon!</p>
-      <p>Best,<br>${poc}</p>
+      Hey @${username},<br><br>
+      Thank you for scheduling a meeting! I’m looking forward to our chat and learning more about how we can work together. <br><br>
+      Let me know if you have any questions before we connect. See you soon!</p>
+      Best,<br>${poc}
     `;
     
     // Create the reply request body
