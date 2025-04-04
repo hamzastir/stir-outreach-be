@@ -10,7 +10,7 @@ const API_BASE_URL = "https://server.smartlead.ai/api/v1";
 const API_KEY = "eaf95559-9524-40ec-bb75-a5bf585ce25b_94ivz0y";
 
 /**
- * Fetches data from the Smartlead API
+ * Fetches data from the Smartlead API with improved error handling
  */
 const fetchFromApi = async (endpoint, method = "GET", body) => {
   try {
@@ -69,6 +69,45 @@ const fetchLeadId = async (email) => {
 };
 
 /**
+ * Fetches the message history for a lead in a specific campaign.
+ */
+const fetchMessageHistory = async (campaignId, leadId) => {
+  console.log(`Fetching message history for lead ${leadId} in campaign ${campaignId}...`);
+  const messageHistoryResponse = await fetchFromApi(
+    `campaigns/${campaignId}/leads/${leadId}/message-history`
+  );
+
+  let messageHistory = [];
+  if (
+    messageHistoryResponse &&
+    messageHistoryResponse.history &&
+    Array.isArray(messageHistoryResponse.history)
+  ) {
+    messageHistory = messageHistoryResponse.history;
+  } else if (Array.isArray(messageHistoryResponse)) {
+    messageHistory = messageHistoryResponse;
+  }
+
+  return messageHistory;
+};
+
+/**
+ * Finds the latest sent message from the message history.
+ */
+const findLatestSentMessage = (messageHistory) => {
+  const latestMessage = messageHistory
+    .filter((msg) => msg.type === "SENT")
+    .sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+
+  if (!latestMessage) {
+    console.warn("No sent messages found to reply to");
+    return null;
+  }
+
+  return latestMessage;
+};
+
+/**
  * Sends a confirmation email via Smartlead after a calendly booking
  */
 const sendCalendlyConfirmationEmail = async (campaignId, email, username, poc, meetingDetails) => {
@@ -90,28 +129,83 @@ const sendCalendlyConfirmationEmail = async (campaignId, email, username, poc, m
       hour12: true
     });
     
-    // Prepare email content
-    const emailBody = {
-      email: email,
-      email_body: `
-        Hey @${username},<br><br>
-       Thank you for scheduling a meeting! I’m looking forward to our chat and learning more about how we can work together.
-Let me know if you have any questions before we connect. See you soon!<br><br>
-Best,<br>${poc}</p>
-      `,
-      campaign_id: campaignId
+    // Get lead ID first
+    const leadId = await fetchLeadId(email);
+    
+    // Get message history to find the latest message to reply to
+    const messageHistory = await fetchMessageHistory(campaignId, leadId);
+    
+    // Find the latest sent message
+    const latestMessage = findLatestSentMessage(messageHistory);
+    
+    if (!latestMessage) {
+      console.warn(`No sent messages found for ${email}, cannot send confirmation`);
+      throw new Error("No sent messages found to reply to");
+    }
+    
+    // Create email body for confirmation
+    const emailBody = `
+      <p>Hey @${username},</p>
+      <p>Thank you for scheduling a meeting! I'm looking forward to our chat on ${formattedDate} at ${formattedTime} and learning more about how we can work together.</p>
+      <p>Let me know if you have any questions before we connect. See you soon!</p>
+      <p>Best,<br>${poc}</p>
+    `;
+    
+    // Create the reply request body
+    const replyRequestBody = {
+      email_stats_id: latestMessage.stats_id || latestMessage.email_stats_id,
+      email_body: emailBody,
+      reply_message_id: latestMessage.message_id,
+      reply_email_time: latestMessage.time || latestMessage.sent_time,
+      reply_email_body: latestMessage.email_body,
+      add_signature: true,
     };
     
-    // Send the email
-    const response = await fetchFromApi('campaigns/send-email', 'POST', emailBody);
-    console.log('Confirmation email sent successfully:', response);
+    // Send the email as a reply to the last message in the thread
+    const response = await fetchFromApi(
+      `campaigns/${campaignId}/reply-email-thread`,
+      "POST",
+      replyRequestBody
+    );
     
+    console.log('Confirmation email sent successfully:', response);
     return response;
     
   } catch (error) {
     console.error('Error sending Calendly confirmation email:', error);
     throw error;
   }
+};
+
+/**
+ * Helper function to get current date and time in IST
+ */
+const getCurrentISTDateTime = () => {
+  const now = new Date();
+  
+  // Convert to IST
+  const istDateTime = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  
+  // Parse the formatted date time string
+  const [dateStr, timeStr] = istDateTime.split(", ");
+  
+  // Convert "DD/MM/YYYY" to "YYYY-MM-DD"
+  const dateParts = dateStr.split("/");
+  const formattedDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+  
+  return {
+    date: formattedDate,  // YYYY-MM-DD format in IST
+    time: timeStr         // HH:MM:SS format in IST
+  };
 };
 
 // Webhook endpoint to handle Calendly events
@@ -144,34 +238,55 @@ router.post("/", async (req, res) => {
       
       const { username, poc, campaign_id } = userRecord;
       
-      // Send confirmation email
-      if (campaign_id) {
-        await sendCalendlyConfirmationEmail(
-          campaign_id, 
-          bookingEmail, 
-          username, 
-          poc,
-          {
-            start_time: startTime,
-            end_time: endTime
-          }
-        );
-      } else {
-        console.warn(`No campaign ID found for ${bookingEmail}, skipping confirmation email`);
-      }
+      // Format the date in YYYY-MM-DD format for database
+      const bookingDate = new Date(startTime).toISOString().split('T')[0];
       
-      // Update the database
-      const bookingDate = new Date(startTime).toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      
-      await db("stir_outreach_dashboard")
+      // Update the database FIRST to mark the meeting as scheduled
+      // This is critical to ensure we don't miss this step
+      const updateResult = await db("stir_outreach_dashboard")
         .where("business_email", bookingEmail)
         .update({
           video_call_status: "scheduled",
           video_call_date: bookingDate,
-          calendly_link_clicked: true // Ensure this is marked as true
+          calendly_link_clicked: true
         });
       
       console.log(`Database updated for ${bookingEmail}: call scheduled on ${bookingDate}`);
+      
+      // Send confirmation email if we have a campaign ID
+      if (campaign_id) {
+        try {
+          await sendCalendlyConfirmationEmail(
+            campaign_id, 
+            bookingEmail, 
+            username, 
+            poc,
+            {
+              start_time: startTime,
+              end_time: endTime
+            }
+          );
+          console.log(`Confirmation email sent successfully to ${bookingEmail}`);
+        } catch (emailError) {
+          console.error(`Failed to send confirmation email to ${bookingEmail}:`, emailError);
+          // We continue even if email sending fails, as the database was already updated
+        }
+      } else {
+        console.warn(`No campaign ID found for ${bookingEmail}, skipping confirmation email`);
+      }
+    } else if (req.body.event === 'invitee.canceled') {
+      // Handle cancellation if needed
+      const bookingEmail = req.body.payload.email;
+      console.log(`Calendly booking canceled for: ${bookingEmail}`);
+      
+      // Update the database to reflect the cancellation
+      await db("stir_outreach_dashboard")
+        .where("business_email", bookingEmail)
+        .update({
+          video_call_status: "canceled",
+        });
+        
+      console.log(`Database updated for ${bookingEmail}: call canceled`);
     }
     
     // Always respond with 200 to acknowledge receipt
