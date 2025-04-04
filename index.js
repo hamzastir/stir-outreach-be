@@ -372,7 +372,7 @@ app.listen(PORT, async () => {
     
     // Set up the cron jobs when the server starts
     setupFollowupEmailCron();
-    setupDailyOutreachCron();
+    // setupDailyOutreachCron();
     
     console.log("Cron jobs set up for follow-up emails and daily outreach (14:00 IST, Mon-Fri)");
   } catch (error) {
