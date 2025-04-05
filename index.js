@@ -19,6 +19,7 @@ import { createWebhook } from "./src/utility/calendlywebhook.js";
 import { db } from "./src/db/db.js";
 import cron from "node-cron";
 import moment from "moment-timezone";
+import { checkAllBouncedEmails, ensureRequiredColumns } from "./src/utility/checkBounceEmail.js";
 
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import userRoutes from "./src/routes/users.js";
@@ -244,6 +245,40 @@ const setupDailyOutreachCron = () => {
   
   console.log("Daily outreach cron job scheduled to run Monday-Friday at 14:00 IST");
 };
+const setupBouncedEmailCheckCron = () => {
+  // Run at 3:00 AM IST every day
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      console.log('Running Bounced Email Check Cron Job at 3:00 AM IST');
+      await checkAllBouncedEmails();
+    } catch (error) {
+      console.error('Error in bounced email cron job:', error);
+      // You could add notification logic here (email, Slack, etc.)
+    }
+  }, {
+    timezone: "Asia/Kolkata", // Set timezone to IST
+    scheduled: true,
+    runOnInit: false, // Don't run immediately when server starts
+  });
+  
+  console.log("Bounced email check cron job scheduled to run daily at 3:00 AM IST");
+};
+
+// Update the test route
+app.get("/test-bounced-emails", async (req, res) => {
+  try {
+    // First ensure the required columns exist
+    await ensureRequiredColumns();
+    
+    const result = await checkAllBouncedEmails();
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ 
+      error: "Failed to check bounced emails", 
+      details: error.message 
+    });
+  }
+});
 
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes);
@@ -373,7 +408,8 @@ app.listen(PORT, async () => {
     // Set up the cron jobs when the server starts
     setupFollowupEmailCron();
     // setupDailyOutreachCron();
-    
+    setupBouncedEmailCheckCron();
+
     console.log("Cron jobs set up for follow-up emails and daily outreach (14:00 IST, Mon-Fri)");
   } catch (error) {
     console.error("Server initialization error:", error);
