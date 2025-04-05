@@ -17,6 +17,8 @@ import {
 import { setupSmartLeadWebhook } from "./src/utility/webhookEvent.js";
 import { createWebhook } from "./src/utility/calendlywebhook.js";
 import { db } from "./src/db/db.js";
+import { db as pdb } from "./src/db/primaryDb.js";
+
 import cron from "node-cron";
 import moment from "moment-timezone";
 import { checkAllBouncedEmails, ensureRequiredColumns } from "./src/utility/checkBounceEmail.js";
@@ -279,7 +281,99 @@ app.get("/test-bounced-emails", async (req, res) => {
     });
   }
 });
+const updateOnboardingStatus = async () => {
+  try {
+    console.log("Starting onboarding status update check...");
+    
+    // Get all users from stir_outreach_dashboard that don't have onboarding_status set to 'completed'
+    const outreachUsers = await db("stir_outreach_dashboard")
+      .select("username", "id")
+      .where(function() {
+        this.whereNull("onboarding_status")
+          .orWhere("onboarding_status", "!=", "completed");
+      });
+    
+    if (outreachUsers.length === 0) {
+      console.log("No users found that need onboarding status update.");
+      return { success: true, message: "No users need updating.", updated: 0 };
+    }
+    
+    console.log(`Found ${outreachUsers.length} users to check for onboarding status.`);
+    
+    // Extract usernames for the query
+    const usernames = outreachUsers.map(user => user.username);
+    
+    // Check which of these usernames exist in the influencer_onboarded table (as handle)
+    const onboardedUsers = await pdb("influencer_onboarded")
+      .select("handle")
+      .whereIn("handle", usernames);
+    
+    if (onboardedUsers.length === 0) {
+      console.log("None of the checked users have completed onboarding.");
+      return { success: true, message: "No users have completed onboarding.", updated: 0 };
+    }
+    
+    // Create a set of onboarded handles for quick lookup
+    const onboardedHandles = new Set(onboardedUsers.map(user => user.handle));
+    
+    // Find users that need to be updated
+    const usersToUpdate = outreachUsers.filter(user => onboardedHandles.has(user.username));
+    
+    if (usersToUpdate.length === 0) {
+      console.log("No matching users found for onboarding status update.");
+      return { success: true, message: "No matching users found.", updated: 0 };
+    }
+    
+    console.log(`Found ${usersToUpdate.length} users to update with completed onboarding status.`);
+    
+    // Update the onboarding_status to 'completed' for matching users
+    const userIds = usersToUpdate.map(user => user.id);
+    await db("stir_outreach_dashboard")
+      .whereIn("id", userIds)
+      .update({ 
+        onboarding_status: "completed",
+        updated_at: new Date()
+      });
+    
+    console.log(`✅ Successfully updated onboarding status for ${usersToUpdate.length} users.`);
+    
+    return { 
+      success: true, 
+      message: `Updated onboarding status for ${usersToUpdate.length} users.`, 
+      updated: usersToUpdate.length,
+      users: usersToUpdate.map(u => u.username)
+    };
+  } catch (error) {
+    console.error("Error updating onboarding status:", error);
+    return { success: false, error: error.message };
+  }
+};
 
+// Set up cron job to run twice a week (Monday and Thursday at 2:00 AM IST)
+const setupOnboardingStatusCron = () => {
+  // '0 2 * * 1,4' - runs at 2:00 AM on Monday and Thursday
+  cron.schedule('0 2 * * 1,4', async () => {
+    console.log('Running Onboarding Status Check Cron Job at 2:00 AM IST');
+    await updateOnboardingStatus();
+  }, {
+    timezone: "Asia/Kolkata" // Set timezone to IST
+  });
+  
+  console.log("Onboarding status check cron job scheduled to run Monday and Thursday at 2:00 AM IST");
+};
+
+// Test route for onboarding status update
+app.get("/test-onboarding-status", async (req, res) => {
+  try {
+    const result = await updateOnboardingStatus();
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ 
+      error: "Failed to update onboarding status", 
+      details: error.message 
+    });
+  }
+});
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", userRoutes);
 app.use("/api/insta-users", instaUserRoutes);
@@ -404,7 +498,8 @@ app.listen(PORT, async () => {
     console.log("Visit /run-followup to start the follow-up email sequence");
     console.log("Visit /test-prepare-influencers to test the daily outreach preparation");
     console.log("For testing: /run-followup-1, /run-followup-2, /run-followup-3 for specific stages");
-    
+    setupOnboardingStatusCron(); // Add the new cron job
+
     // Set up the cron jobs when the server starts
     setupFollowupEmailCron();
     // setupDailyOutreachCron();
