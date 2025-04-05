@@ -47,6 +47,7 @@ router.get("/stats", async (req, res) => {
         stats: {
           totalEmails: 0,
           totalDelivered: 0,
+          totalBounced: 0,
           totalReplies: 0,
           totalCalendlyClicks: 0,
           totalOnboardingClicks: 0,
@@ -64,6 +65,7 @@ router.get("/stats", async (req, res) => {
             calendlyFollowUp2: 0
           },
           replyRate: 0,
+          bounceRate: 0,
           calendlyClickRate: 0,
           onboardingClickRate: 0
         },
@@ -193,6 +195,7 @@ router.get("/stats", async (req, res) => {
     const stats = {
       totalEmails: 0,            // This will count both scheduled + sent (first_email_status)
       totalDelivered: 0,         // This will count only sent (first_email_status = 'sent')
+      totalBounced: 0,           // This will count emails marked as bounced
       totalReplies: 0,
       totalCalendlyClicks: 0,
       totalOnboardingClicks: 0,
@@ -225,6 +228,8 @@ router.get("/stats", async (req, res) => {
           date: format(hour, "yyyy-MM-dd'T'HH:00:00"),
           hour: format(hour, "HH:00"),
           emailsSent: 0,
+          emailsDelivered: 0,
+          emailsBounced: 0,
           repliesReceived: 0,
           calendlyClicks: 0,
           onboardingClicks: 0,
@@ -250,9 +255,13 @@ router.get("/stats", async (req, res) => {
           if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
             
-            // Count as delivered only if status is 'sent'
+            // Count as delivered only if status is 'sent' and not bounced
             if (user.first_email_status === 'sent') {
-              stats.totalDelivered++;
+              if (user.is_bounced) {
+                stats.totalBounced++;
+              } else {
+                stats.totalDelivered++;
+              }
             }
             
             // Add to hourly chart data
@@ -264,6 +273,13 @@ router.get("/stats", async (req, res) => {
             
             if (hourIndex !== -1) {
               chartData[hourIndex].emailsSent++;
+              if (user.first_email_status === 'sent') {
+                if (user.is_bounced) {
+                  chartData[hourIndex].emailsBounced++;
+                } else {
+                  chartData[hourIndex].emailsDelivered++;
+                }
+              }
             }
             
             // Add to recent activity
@@ -273,7 +289,7 @@ router.get("/stats", async (req, res) => {
               username: user.username || 'Unknown',
               email: user.business_email || 'No email',
               poc: user.poc || 'Unknown POC',
-              activityType: 'email_sent',
+              activityType: user.is_bounced ? 'email_bounced' : 'email_sent',
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
               timestamp: emailDate
@@ -700,10 +716,12 @@ router.get("/stats", async (req, res) => {
         return b.timestamp - a.timestamp;
       });
       
-      // Calculate rates - use totalDelivered instead of totalEmails for more accurate rates
-      stats.replyRate = stats.totalDelivered > 0 ? (stats.totalReplies / stats.totalDelivered) * 100 : 0;
-      stats.calendlyClickRate = stats.totalDelivered > 0 ? (stats.totalCalendlyClicks / stats.totalDelivered) * 100 : 0;
-      stats.onboardingClickRate = stats.totalDelivered > 0 ? (stats.totalOnboardingClicks / stats.totalDelivered) * 100 : 0;
+      // Calculate rates - use totalEmails for more accurate rates
+      const totalSentEmails = stats.totalDelivered + stats.totalBounced;
+      stats.replyRate = totalSentEmails > 0 ? (stats.totalReplies / totalSentEmails) * 100 : 0;
+      stats.bounceRate = totalSentEmails > 0 ? (stats.totalBounced / totalSentEmails) * 100 : 0;
+      stats.calendlyClickRate = totalSentEmails > 0 ? (stats.totalCalendlyClicks / totalSentEmails) * 100 : 0;
+      stats.onboardingClickRate = totalSentEmails > 0 ? (stats.totalOnboardingClicks / totalSentEmails) * 100 : 0;
       
       // Return the hourly data
       return res.json({
@@ -725,6 +743,8 @@ router.get("/stats", async (req, res) => {
         return {
           date: format(day, "yyyy-MM-dd"),
           emailsSent: 0,
+          emailsDelivered: 0,
+          emailsBounced: 0,
           repliesReceived: 0,
           calendlyClicks: 0,
           onboardingClicks: 0,
@@ -750,9 +770,13 @@ router.get("/stats", async (req, res) => {
           if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
             
-            // Count as delivered only if status is 'sent'
+            // Count as delivered only if status is 'sent' and not bounced
             if (user.first_email_status === 'sent') {
-              stats.totalDelivered++;
+              if (user.is_bounced) {
+                stats.totalBounced++;
+              } else {
+                stats.totalDelivered++;
+              }
             }
             
             // Format the date to yyyy-MM-dd for comparison
@@ -763,6 +787,13 @@ router.get("/stats", async (req, res) => {
             
             if (dayIndex !== -1) {
               chartData[dayIndex].emailsSent++;
+              if (user.first_email_status === 'sent') {
+                if (user.is_bounced) {
+                  chartData[dayIndex].emailsBounced++;
+                } else {
+                  chartData[dayIndex].emailsDelivered++;
+                }
+              }
             }
             
             // Add to recent activity
@@ -772,7 +803,7 @@ router.get("/stats", async (req, res) => {
               username: user.username || 'Unknown',
               email: user.business_email || 'No email',
               poc: user.poc || 'Unknown POC',
-              activityType: 'email_sent',
+              activityType: user.is_bounced ? 'email_bounced' : 'email_sent',
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
               timestamp: emailDate
@@ -1184,10 +1215,12 @@ router.get("/stats", async (req, res) => {
         return b.timestamp - a.timestamp;
       });
       
-      // Calculate rates - use totalDelivered instead of totalEmails for more accurate rates
-      stats.replyRate = stats.totalDelivered > 0 ? (stats.totalReplies / stats.totalDelivered) * 100 : 0;
-      stats.calendlyClickRate = stats.totalDelivered > 0 ? (stats.totalCalendlyClicks / stats.totalDelivered) * 100 : 0;
-      stats.onboardingClickRate = stats.totalDelivered > 0 ? (stats.totalOnboardingClicks / stats.totalDelivered) * 100 : 0;
+      // Calculate rates - use totalSentEmails for more accurate rates
+      const totalSentEmails = stats.totalDelivered + stats.totalBounced;
+      stats.replyRate = totalSentEmails > 0 ? (stats.totalReplies / totalSentEmails) * 100 : 0;
+      stats.bounceRate = totalSentEmails > 0 ? (stats.totalBounced / totalSentEmails) * 100 : 0;
+      stats.calendlyClickRate = totalSentEmails > 0 ? (stats.totalCalendlyClicks / totalSentEmails) * 100 : 0;
+      stats.onboardingClickRate = totalSentEmails > 0 ? (stats.totalOnboardingClicks / totalSentEmails) * 100 : 0;
       
       // Return the daily data
       return res.json({
@@ -1280,7 +1313,7 @@ router.get("/recent-activity", async (req, res) => {
     
     users.forEach(user => {
       try {
-        // Add email sent activity
+        // Add email sent activity or bounced email
         if (user.first_email_date && user.first_email_status === 'sent') {
           allActivities.push({
             id: `email_${user.id}`,
@@ -1289,7 +1322,7 @@ router.get("/recent-activity", async (req, res) => {
             name: user.name || user.username || 'Unknown',
             email: user.business_email || 'No email',
             poc: user.poc || 'Unknown POC',
-            activityType: 'email_sent',
+            activityType: user.is_bounced ? 'email_bounced' : 'email_sent',
             activityDate: user.first_email_date,
             activityTime: user.first_email_time,
             dateString: `${user.first_email_date} ${user.first_email_time || '00:00:00'}`
