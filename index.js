@@ -25,7 +25,7 @@ import { checkAllBouncedEmails, ensureRequiredColumns } from "./src/utility/chec
 
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
 import approvedUsersRoutes from "./src/routes/approvedUsers.js";
-import instaUserRoutes from "./src/routes/insta-users.js";
+import yetToApprovedRoutes from "./src/routes/yet-to-approved-leads.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import calendlyRoutes from "./src/routes/calendly.js";
 import { 
@@ -376,7 +376,7 @@ app.get("/test-onboarding-status", async (req, res) => {
 });
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
 app.use("/api/outreach", approvedUsersRoutes);
-app.use("/api/insta-users", instaUserRoutes);
+app.use("/api/yet-to-approved", yetToApprovedRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/calendly-webhook", calendlyRoutes);
 

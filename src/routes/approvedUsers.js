@@ -18,7 +18,7 @@ router.get("/approved-users", async (req, res) => {
   }
 });
 
-router.post("/add-users", async (req, res) => {
+router.post("/update-users", async (req, res) => {
   try {
     const users = req.body.users; // Expecting an array of user objects
 
