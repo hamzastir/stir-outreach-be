@@ -209,6 +209,7 @@ const getCurrentISTDateTime = () => {
 };
 
 // Webhook endpoint to handle Calendly events
+// Webhook endpoint to handle Calendly events
 router.post("/", async (req, res) => {
   try {
     // Log the entire request body to see what Calendly sends
@@ -241,6 +242,9 @@ router.post("/", async (req, res) => {
       // Format the date in YYYY-MM-DD format for database
       const bookingDate = new Date(startTime).toISOString().split('T')[0];
       
+      // Get current time in IST for the follow-up fields
+      const currentIST = getCurrentISTDateTime();
+      
       // Update the database FIRST to mark the meeting as scheduled
       // This is critical to ensure we don't miss this step
       const updateResult = await db("stir_outreach_dashboard")
@@ -248,10 +252,14 @@ router.post("/", async (req, res) => {
         .update({
           video_call_status: "scheduled",
           video_call_date: bookingDate,
-          calendly_link_clicked: true
+          calendly_link_clicked: true,
+          calendly_follow_up_3_status: true,
+          calendly_follow_up_3_date: currentIST.date,
+          calendly_follow_up_3_time: currentIST.time
         });
       
       console.log(`Database updated for ${bookingEmail}: call scheduled on ${bookingDate}`);
+      console.log(`Follow-up 3 recorded: ${currentIST.date} at ${currentIST.time}`);
       
       // Send confirmation email if we have a campaign ID
       if (campaign_id) {
@@ -279,14 +287,21 @@ router.post("/", async (req, res) => {
       const bookingEmail = req.body.payload.email;
       console.log(`Calendly booking canceled for: ${bookingEmail}`);
       
+      // Get current time in IST for the follow-up fields
+      const currentIST = getCurrentISTDateTime();
+      
       // Update the database to reflect the cancellation
       await db("stir_outreach_dashboard")
         .where("business_email", bookingEmail)
         .update({
           video_call_status: "canceled",
+          calendly_follow_up_3_status: true,
+          calendly_follow_up_3_date: currentIST.date,
+          calendly_follow_up_3_time: currentIST.time
         });
         
       console.log(`Database updated for ${bookingEmail}: call canceled`);
+      console.log(`Follow-up 3 recorded: ${currentIST.date} at ${currentIST.time}`);
     }
     
     // Always respond with 200 to acknowledge receipt
