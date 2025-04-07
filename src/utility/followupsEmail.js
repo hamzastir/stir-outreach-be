@@ -309,6 +309,27 @@ const isFollowUpAlreadySent = async (email, followUpNumber) => {
 }
 
 /**
+ * Check if the email is bounced or blocked
+ */
+const isEmailBouncedOrBlocked = async (email) => {
+  const record = await db("stir_outreach_dashboard")
+    .where("business_email", email)
+    .first();
+  
+  if (!record) {
+    console.warn(`Record not found for ${email} in bounce/block check`);
+    return false; // Default to allowing follow-up if record not found
+  }
+  
+  if (record.is_bounced === true || record.is_blocked === true) {
+    console.log(`Email ${email} is ${record.is_bounced ? 'bounced' : ''}${record.is_bounced && record.is_blocked ? ' and ' : ''}${record.is_blocked ? 'blocked' : ''}`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Base query function that applies user filtering based on the setting
  */
 const getBaseQuery = (query) => {
@@ -358,6 +379,15 @@ export const sendFirstFollowup = async () => {
       .andWhere(function() {
         // First email must have been sent at least 4 days ago
         this.where("first_email_date", "<=", fourDaysAgo);
+      })
+      // Exclude bounced and blocked emails
+      .andWhere(function() {
+        this.where("is_bounced", false)
+            .orWhereNull("is_bounced");
+      })
+      .andWhere(function() {
+        this.where("is_blocked", false)
+            .orWhereNull("is_blocked");
       });
     
     // Apply user filtering if needed
@@ -387,6 +417,13 @@ export const sendFirstFollowup = async () => {
         const alreadySent = await isFollowUpAlreadySent(email, 1);
         if (alreadySent) {
           console.log(`Skipping first follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Double-check if email is bounced or blocked
+        const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
+        if (isBounceOrBlock) {
+          console.log(`Skipping first follow-up for ${email} - email is bounced or blocked`);
           continue;
         }
         
@@ -432,6 +469,14 @@ export const sendFirstFollowup = async () => {
         const finalCheck = await isFollowUpAlreadySent(email, 1);
         if (finalCheck) {
           console.log(`Final check: first follow-up already sent to ${email}, skipping`);
+          followUpLocks[1].delete(email);
+          continue;
+        }
+        
+        // Final bounce/block check
+        const finalBounceCheck = await isEmailBouncedOrBlocked(email);
+        if (finalBounceCheck) {
+          console.log(`Final check: ${email} is bounced or blocked, skipping follow-up`);
           followUpLocks[1].delete(email);
           continue;
         }
@@ -508,6 +553,15 @@ export const sendSecondFollowup = async () => {
       .andWhere(function() {
         // First follow-up must have been sent at least 2 days ago
         this.where("follow_up_1_date", "<=", twoDaysAgo);
+      })
+      // Exclude bounced and blocked emails
+      .andWhere(function() {
+        this.where("is_bounced", false)
+            .orWhereNull("is_bounced");
+      })
+      .andWhere(function() {
+        this.where("is_blocked", false)
+            .orWhereNull("is_blocked");
       });
     
     // Apply user filtering if needed
@@ -537,6 +591,13 @@ export const sendSecondFollowup = async () => {
         const alreadySent = await isFollowUpAlreadySent(email, 2);
         if (alreadySent) {
           console.log(`Skipping second follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Double-check if email is bounced or blocked
+        const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
+        if (isBounceOrBlock) {
+          console.log(`Skipping second follow-up for ${email} - email is bounced or blocked`);
           continue;
         }
         
@@ -582,6 +643,14 @@ export const sendSecondFollowup = async () => {
         const finalCheck = await isFollowUpAlreadySent(email, 2);
         if (finalCheck) {
           console.log(`Final check: second follow-up already sent to ${email}, skipping`);
+          followUpLocks[2].delete(email);
+          continue;
+        }
+        
+        // Final bounce/block check
+        const finalBounceCheck = await isEmailBouncedOrBlocked(email);
+        if (finalBounceCheck) {
+          console.log(`Final check: ${email} is bounced or blocked, skipping follow-up`);
           followUpLocks[2].delete(email);
           continue;
         }
@@ -659,6 +728,15 @@ export const sendThirdFollowup = async () => {
       .andWhere(function() {
         // Second follow-up must have been sent at least 1 day ago
         this.where("follow_up_2_date", "<=", oneDayAgo);
+      })
+      // Exclude bounced and blocked emails
+      .andWhere(function() {
+        this.where("is_bounced", false)
+            .orWhereNull("is_bounced");
+      })
+      .andWhere(function() {
+        this.where("is_blocked", false)
+            .orWhereNull("is_blocked");
       });
     
     // Apply user filtering if needed
@@ -688,6 +766,13 @@ export const sendThirdFollowup = async () => {
         const alreadySent = await isFollowUpAlreadySent(email, 3);
         if (alreadySent) {
           console.log(`Skipping third follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Double-check if email is bounced or blocked
+        const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
+        if (isBounceOrBlock) {
+          console.log(`Skipping third follow-up for ${email} - email is bounced or blocked`);
           continue;
         }
         
@@ -733,6 +818,14 @@ export const sendThirdFollowup = async () => {
         const finalCheck = await isFollowUpAlreadySent(email, 3);
         if (finalCheck) {
           console.log(`Final check: third follow-up already sent to ${email}, skipping`);
+          followUpLocks[3].delete(email);
+          continue;
+        }
+        
+        // Final bounce/block check
+        const finalBounceCheck = await isEmailBouncedOrBlocked(email);
+        if (finalBounceCheck) {
+          console.log(`Final check: ${email} is bounced or blocked, skipping follow-up`);
           followUpLocks[3].delete(email);
           continue;
         }
