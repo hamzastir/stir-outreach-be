@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import fetch from 'node-fetch';
 dotenv.config();
 const API_BASE_URL = "https://server.smartlead.ai/api/v1";
-const API_KEY = "eaf95559-9524-40ec-bb75-a5bf585ce25b_94ivz0y";
+const API_KEY = process.env.SMARTLEAD_API_KEY;
 
 // List of specific usernames to send follow-ups to
 const ALLOWED_USERNAMES = [
@@ -15,6 +15,13 @@ const ALLOWED_USERNAMES = [
 
 // Toggle variable to control whether to use only approved users or all users
 const USE_ONLY_APPROVED_USERS = false; // Set to false to target all users, true for only approved users
+
+// Create a lock mechanism to prevent duplicate follow-ups
+const followUpLocks = {
+  1: new Set(), // Set of email addresses with follow-up 1 in progress
+  2: new Set(), // Set of email addresses with follow-up 2 in progress
+  3: new Set(), // Set of email addresses with follow-up 3 in progress
+};
 
 /**
  * Helper function to calculate dates for follow-ups
@@ -145,8 +152,6 @@ const hasLeadReplied = (messageHistory) => {
  * Sends a follow-up email to the latest message in the thread.
  * @param {number} followUpNumber - Which follow-up this is (1, 2, or 3)
  */
-// In the sendFollowUpEmail function, update the URL format in each email template
-
 const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, followUpNumber = 1) => {
   console.log(`Sending follow-up #${followUpNumber} to ${username}`);
   
@@ -201,6 +206,7 @@ const sendFollowUpEmail = async (campaignId, latestMessage, username, poc, follo
     replyRequestBody
   );
 };
+
 /**
  * Helper function to get current date and time in IST
  * @returns {Object} Object with date and time properties in IST
@@ -270,6 +276,37 @@ const updateDatabaseForFollowup = async (email, followUpNumber) => {
   return updateResult;
 };
 
+/**
+ * Double check if follow-up has been sent already to prevent duplicate sends
+ */
+const isFollowUpAlreadySent = async (email, followUpNumber) => {
+  // Check the database again to be 100% sure
+  const record = await db("stir_outreach_dashboard")
+    .where("business_email", email)
+    .first();
+  
+  if (!record) {
+    console.warn(`Record not found for ${email} in double-check`);
+    return true; // Treat as already sent to be safe
+  }
+  
+  if (followUpNumber === 1 && record.follow_up_1_status === true) {
+    console.log(`Follow-up #1 already marked as sent for ${email} (double-check)`);
+    return true;
+  }
+  
+  if (followUpNumber === 2 && record.follow_up_2_status === true) {
+    console.log(`Follow-up #2 already marked as sent for ${email} (double-check)`);
+    return true;
+  }
+  
+  if (followUpNumber === 3 && record.follow_up_3_status === true) {
+    console.log(`Follow-up #3 already marked as sent for ${email} (double-check)`);
+    return true;
+  }
+  
+  return false;
+}
 
 /**
  * Base query function that applies user filtering based on the setting
@@ -338,18 +375,37 @@ export const sendFirstFollowup = async () => {
     // Process each lead for first follow-up
     for (const lead of leadsToFollowUp) {
       try {
-        console.log(`Processing first follow-up for ${lead.username} (${lead.business_email})`);
+        const email = lead.business_email;
+        
+        // Skip if already being processed (prevent concurrent processing)
+        if (followUpLocks[1].has(email)) {
+          console.log(`Skipping ${email} - first follow-up already in progress`);
+          continue;
+        }
+
+        // Extra check to see if follow-up 1 was already sent
+        const alreadySent = await isFollowUpAlreadySent(email, 1);
+        if (alreadySent) {
+          console.log(`Skipping first follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Add lock
+        followUpLocks[1].add(email);
+        
+        console.log(`Processing first follow-up for ${lead.username} (${email})`);
         console.log(`First email was sent on: ${lead.first_email_date}`);
         
         // Get the campaign ID
         const campaignId = lead.campaign_id;
         if (!campaignId) {
-          console.warn(`No campaign ID found for lead ${lead.business_email}, skipping`);
+          console.warn(`No campaign ID found for lead ${email}, skipping`);
+          followUpLocks[1].delete(email);
           continue;
         }
         
         // Get the lead ID from Smartlead
-        const leadId = await fetchLeadId(lead.business_email);
+        const leadId = await fetchLeadId(email);
         
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
@@ -358,15 +414,25 @@ export const sendFirstFollowup = async () => {
         if (hasLeadReplied(messageHistory)) {
           console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
           await db("stir_outreach_dashboard")
-            .where("business_email", lead.business_email)
+            .where("business_email", email)
             .update({ replied: true });
+          followUpLocks[1].delete(email);
           continue;
         }
         
         const latestMessage = findLatestSentMessage(messageHistory);
         
         if (!latestMessage) {
-          console.warn(`No sent messages found for lead ${lead.business_email}, skipping`);
+          console.warn(`No sent messages found for lead ${email}, skipping`);
+          followUpLocks[1].delete(email);
+          continue;
+        }
+        
+        // Final check before sending
+        const finalCheck = await isFollowUpAlreadySent(email, 1);
+        if (finalCheck) {
+          console.log(`Final check: first follow-up already sent to ${email}, skipping`);
+          followUpLocks[1].delete(email);
           continue;
         }
         
@@ -379,16 +445,21 @@ export const sendFirstFollowup = async () => {
           1
         );
         
-        console.log(`First follow-up sent to ${lead.business_email} (${lead.username})`);
+        console.log(`First follow-up sent to ${email} (${lead.username})`);
         
         // Update database
-        await updateDatabaseForFollowup(lead.business_email, 1);
+        await updateDatabaseForFollowup(email, 1);
+        
+        // Release lock
+        followUpLocks[1].delete(email);
         
         // Add a small delay between processing different leads
         await new Promise(resolve => setTimeout(resolve, 2000));
         
       } catch (error) {
         console.error(`Error processing first follow-up for ${lead.username} (${lead.business_email}):`, error);
+        // Release lock in case of error
+        followUpLocks[1].delete(lead.business_email);
         // Continue with the next lead
       }
     }
@@ -454,18 +525,37 @@ export const sendSecondFollowup = async () => {
     // Process each lead for second follow-up
     for (const lead of leadsToFollowUp) {
       try {
-        console.log(`Processing second follow-up for ${lead.username} (${lead.business_email})`);
+        const email = lead.business_email;
+        
+        // Skip if already being processed (prevent concurrent processing)
+        if (followUpLocks[2].has(email)) {
+          console.log(`Skipping ${email} - second follow-up already in progress`);
+          continue;
+        }
+
+        // Extra check to see if follow-up 2 was already sent
+        const alreadySent = await isFollowUpAlreadySent(email, 2);
+        if (alreadySent) {
+          console.log(`Skipping second follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Add lock
+        followUpLocks[2].add(email);
+        
+        console.log(`Processing second follow-up for ${lead.username} (${email})`);
         console.log(`First follow-up was sent on: ${lead.follow_up_1_date}`);
         
         // Get the campaign ID
         const campaignId = lead.campaign_id;
         if (!campaignId) {
-          console.warn(`No campaign ID found for lead ${lead.business_email}, skipping`);
+          console.warn(`No campaign ID found for lead ${email}, skipping`);
+          followUpLocks[2].delete(email);
           continue;
         }
         
         // Get the lead ID from Smartlead
-        const leadId = await fetchLeadId(lead.business_email);
+        const leadId = await fetchLeadId(email);
         
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
@@ -474,15 +564,25 @@ export const sendSecondFollowup = async () => {
         if (hasLeadReplied(messageHistory)) {
           console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
           await db("stir_outreach_dashboard")
-            .where("business_email", lead.business_email)
+            .where("business_email", email)
             .update({ replied: true });
+          followUpLocks[2].delete(email);
           continue;
         }
         
         const latestMessage = findLatestSentMessage(messageHistory);
         
         if (!latestMessage) {
-          console.warn(`No sent messages found for lead ${lead.business_email}, skipping`);
+          console.warn(`No sent messages found for lead ${email}, skipping`);
+          followUpLocks[2].delete(email);
+          continue;
+        }
+        
+        // Final check before sending
+        const finalCheck = await isFollowUpAlreadySent(email, 2);
+        if (finalCheck) {
+          console.log(`Final check: second follow-up already sent to ${email}, skipping`);
+          followUpLocks[2].delete(email);
           continue;
         }
         
@@ -495,16 +595,21 @@ export const sendSecondFollowup = async () => {
           2
         );
         
-        console.log(`Second follow-up sent to ${lead.business_email} (${lead.username})`);
+        console.log(`Second follow-up sent to ${email} (${lead.username})`);
         
         // Update database
-        await updateDatabaseForFollowup(lead.business_email, 2);
+        await updateDatabaseForFollowup(email, 2);
+        
+        // Release lock
+        followUpLocks[2].delete(email);
         
         // Add a small delay between processing different leads
         await new Promise(resolve => setTimeout(resolve, 2000));
         
       } catch (error) {
         console.error(`Error processing second follow-up for ${lead.username} (${lead.business_email}):`, error);
+        // Release lock in case of error
+        followUpLocks[2].delete(lead.business_email);
         // Continue with the next lead
       }
     }
@@ -571,18 +676,37 @@ export const sendThirdFollowup = async () => {
     // Process each lead for third follow-up
     for (const lead of leadsToFollowUp) {
       try {
-        console.log(`Processing third follow-up for ${lead.username} (${lead.business_email})`);
+        const email = lead.business_email;
+        
+        // Skip if already being processed (prevent concurrent processing)
+        if (followUpLocks[3].has(email)) {
+          console.log(`Skipping ${email} - third follow-up already in progress`);
+          continue;
+        }
+
+        // Extra check to see if follow-up 3 was already sent
+        const alreadySent = await isFollowUpAlreadySent(email, 3);
+        if (alreadySent) {
+          console.log(`Skipping third follow-up for ${email} - already sent`);
+          continue;
+        }
+        
+        // Add lock
+        followUpLocks[3].add(email);
+        
+        console.log(`Processing third follow-up for ${lead.username} (${email})`);
         console.log(`Second follow-up was sent on: ${lead.follow_up_2_date}`);
         
         // Get the campaign ID
         const campaignId = lead.campaign_id;
         if (!campaignId) {
-          console.warn(`No campaign ID found for lead ${lead.business_email}, skipping`);
+          console.warn(`No campaign ID found for lead ${email}, skipping`);
+          followUpLocks[3].delete(email);
           continue;
         }
         
         // Get the lead ID from Smartlead
-        const leadId = await fetchLeadId(lead.business_email);
+        const leadId = await fetchLeadId(email);
         
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
@@ -591,15 +715,25 @@ export const sendThirdFollowup = async () => {
         if (hasLeadReplied(messageHistory)) {
           console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
           await db("stir_outreach_dashboard")
-            .where("business_email", lead.business_email)
+            .where("business_email", email)
             .update({ replied: true });
+          followUpLocks[3].delete(email);
           continue;
         }
         
         const latestMessage = findLatestSentMessage(messageHistory);
         
         if (!latestMessage) {
-          console.warn(`No sent messages found for lead ${lead.business_email}, skipping`);
+          console.warn(`No sent messages found for lead ${email}, skipping`);
+          followUpLocks[3].delete(email);
+          continue;
+        }
+        
+        // Final check before sending
+        const finalCheck = await isFollowUpAlreadySent(email, 3);
+        if (finalCheck) {
+          console.log(`Final check: third follow-up already sent to ${email}, skipping`);
+          followUpLocks[3].delete(email);
           continue;
         }
         
@@ -612,16 +746,21 @@ export const sendThirdFollowup = async () => {
           3
         );
         
-        console.log(`Third follow-up sent to ${lead.business_email} (${lead.username})`);
+        console.log(`Third follow-up sent to ${email} (${lead.username})`);
         
         // Update database
-        await updateDatabaseForFollowup(lead.business_email, 3);
+        await updateDatabaseForFollowup(email, 3);
+        
+        // Release lock
+        followUpLocks[3].delete(email);
         
         // Add a small delay between processing different leads
         await new Promise(resolve => setTimeout(resolve, 2000));
         
       } catch (error) {
         console.error(`Error processing third follow-up for ${lead.username} (${lead.business_email}):`, error);
+        // Release lock in case of error
+        followUpLocks[3].delete(lead.business_email);
         // Continue with the next lead
       }
     }
