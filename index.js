@@ -24,7 +24,7 @@ import moment from "moment-timezone";
 import { checkAllBouncedEmails, ensureRequiredColumns } from "./src/utility/checkBounceEmail.js";
 
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
-import userRoutes from "./src/routes/users.js";
+import approvedUsersRoutes from "./src/routes/approvedUsers.js";
 import instaUserRoutes from "./src/routes/insta-users.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import calendlyRoutes from "./src/routes/calendly.js";
@@ -375,7 +375,7 @@ app.get("/test-onboarding-status", async (req, res) => {
   }
 });
 app.post("/api/webhook/smartlead", processSmartleadWebhook);
-app.use("/api/outreach", userRoutes);
+app.use("/api/outreach", approvedUsersRoutes);
 app.use("/api/insta-users", instaUserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/calendly-webhook", calendlyRoutes);
@@ -520,4 +520,3 @@ process.on("unhandledRejection", (error) => {
 });
 
 
-// https://console.anthropic.com/workbench/04845a02-1cd1-4cb6-a189-4bac51f25022
