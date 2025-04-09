@@ -42,3 +42,5 @@ export async function fetchUserPosts(username) {
       return null;
     }
   }
+  // const userData = await fetchUserInfo("elleisalwayshere");
+  // console.log(userData)

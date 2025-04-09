@@ -12,7 +12,13 @@ import {
   eachHourOfInterval,
   isWithinInterval,
   subMonths,
-  isAfter
+  isAfter,
+  isValid,
+  isBefore,
+  compareDesc,
+  parseISO,
+  isSameDay,
+  parse,
 } from "date-fns";
 
 const router = express.Router();  
@@ -40,6 +46,9 @@ router.get("/stats", async (req, res) => {
     }
     
     const users = await query;
+    
+    // Log the first few users for debugging
+    console.log("Sample user data:", users.slice(0, 2));
     
     // If no users found, return empty result
     if (users.length === 0) {
@@ -184,6 +193,8 @@ router.get("/stats", async (req, res) => {
         toDate = endOfDay(now);
     }
     
+    console.log(`Filtering data from ${fromDate} to ${toDate}`);
+    
     // Helper function to parse date and time strings
     const parseDateTime = (dateStr, timeStr) => {
       if (!dateStr) return null;
@@ -234,11 +245,31 @@ router.get("/stats", async (req, res) => {
       }
     };
     
+    // Helper function to check if a follow-up was sent
+    const isFollowUpSent = (status) => {
+      if (!status) return false;
+      const statusLower = status.toLowerCase();
+      return statusLower === 'sent' || statusLower === 'true' || statusLower === 'scheduled';
+    };
+    
+    // Helper function to determine which email prompted an action
+    const determineSourceEmail = (actionDate, emailDates) => {
+      if (!actionDate) return null;
+      
+      // Create array of valid email dates with their types
+      const validEmails = Object.entries(emailDates)
+        .filter(([_, date]) => date !== null && isValid(date) && isBefore(date, actionDate))
+        .sort((a, b) => compareDesc(a[1], b[1])); // Sort by most recent first
+      
+      // Return the most recent email before the action
+      return validEmails.length > 0 ? validEmails[0][0] : null;
+    };
+    
     // Initialize statistics
     const stats = {
-      totalEmails: 0,            // This will count both scheduled + sent (first_email_status)
-      totalDelivered: 0,         // This will count only sent (first_email_status = 'sent')
-      totalBounced: 0,           // This will count emails marked as bounced
+      totalEmails: 0,
+      totalDelivered: 0,
+      totalBounced: 0,
       totalReplies: 0,
       totalCalendlyClicks: 0,
       totalOnboardingClicks: 0,
@@ -302,6 +333,17 @@ router.get("/stats", async (req, res) => {
     // Initialize recent activity array
     const recentActivity = [];
     
+    // Track each follow-up sent for debugging
+    const followUpSentCounts = {
+      followUp1: 0,
+      followUp2: 0,
+      followUp3: 0,
+      onboardingFollowUp1: 0,
+      onboardingFollowUp2: 0,
+      calendlyFollowUp1: 0,
+      calendlyFollowUp2: 0
+    };
+    
     // Use hourly granularity for today and yesterday
     if ((timeRange === 'today' || timeRange === 'yesterday') && granularity === 'hourly') {
       // Generate hourly intervals
@@ -333,15 +375,26 @@ router.get("/stats", async (req, res) => {
       
       // Process each user's data
       users.forEach(user => {
-        // Store dates for later comparison
+        // Parse all the dates
+        const firstEmailDate = parseDateTime(user.first_email_date, user.first_email_time);
+        const followUp1Date = parseDateTime(user.follow_up_1_date, user.follow_up_1_time);
+        const followUp2Date = parseDateTime(user.follow_up_2_date, user.follow_up_2_time);
+        const followUp3Date = parseDateTime(user.follow_up_3_date, user.follow_up_3_time);
+        const onboardingFollowUp1Date = parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time);
+        const onboardingFollowUp2Date = parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time);
+        const calendlyFollowUp1Date = parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time);
+        const calendlyFollowUp2Date = parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time);
+        
+        // Store dates for all email events
         const followUpDates = {
-          followUp1: parseDateTime(user.follow_up_1_date, user.follow_up_1_time),
-          followUp2: parseDateTime(user.follow_up_2_date, user.follow_up_2_time),
-          followUp3: parseDateTime(user.follow_up_3_date, user.follow_up_3_time),
-          onboardingFollowUp1: parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time),
-          onboardingFollowUp2: parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time),
-          calendlyFollowUp1: parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time),
-          calendlyFollowUp2: parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time)
+          firstEmail: firstEmailDate,
+          followUp1: followUp1Date,
+          followUp2: followUp2Date,
+          followUp3: followUp3Date,
+          onboardingFollowUp1: onboardingFollowUp1Date,
+          onboardingFollowUp2: onboardingFollowUp2Date,
+          calendlyFollowUp1: calendlyFollowUp1Date,
+          calendlyFollowUp2: calendlyFollowUp2Date
         };
         
         const replyDate = user.replied ? parseDateTime(user.email_reply_date, user.email_reply_time) : null;
@@ -350,10 +403,8 @@ router.get("/stats", async (req, res) => {
         const unsubscribeDate = user.unsubscribed ? parseDateTime(user.unsubscribe_date, null) : null;
         
         // Process email sent (both scheduled + sent)
-        if (user.first_email_date && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
-          const emailDate = parseDateTime(user.first_email_date, user.first_email_time);
-          
-          if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
+        if (firstEmailDate && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
+          if (isWithinInterval(firstEmailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
             
             // Count as delivered only if status is 'sent' and not bounced
@@ -366,7 +417,7 @@ router.get("/stats", async (req, res) => {
             }
             
             // Add to hourly chart data
-            const hour = emailDate.getHours();
+            const hour = firstEmailDate.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -393,22 +444,21 @@ router.get("/stats", async (req, res) => {
               activityType: user.is_bounced ? 'email_bounced' : 'email_sent',
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
-              timestamp: emailDate
+              timestamp: firstEmailDate
             });
           }
         }
         
-        // Process follow-up emails
-        
+        // Process regular follow-ups
         // Follow-up 1
-        if (user.follow_up_1_date && user.follow_up_1_status) {
-          const followUpDate = followUpDates.followUp1;
+        if (followUp1Date && isFollowUpSent(user.follow_up_1_status)) {
+          followUpSentCounts.followUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp1.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = followUp1Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -428,37 +478,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_1_sent',
               activityDate: user.follow_up_1_date,
               activityTime: user.follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: followUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.unsubscribed++;
           }
         }
         
         // Follow-up 2
-        if (user.follow_up_2_date && user.follow_up_2_status) {
-          const followUpDate = followUpDates.followUp2;
+        if (followUp2Date && isFollowUpSent(user.follow_up_2_status)) {
+          followUpSentCounts.followUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp2.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = followUp2Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -478,37 +511,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_2_sent',
               activityDate: user.follow_up_2_date,
               activityTime: user.follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: followUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.unsubscribed++;
           }
         }
         
         // Follow-up 3
-        if (user.follow_up_3_date && user.follow_up_3_status) {
-          const followUpDate = followUpDates.followUp3;
+        if (followUp3Date && isFollowUpSent(user.follow_up_3_status)) {
+          followUpSentCounts.followUp3++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp3Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp3.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = followUp3Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -528,37 +544,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_3_sent',
               activityDate: user.follow_up_3_date,
               activityTime: user.follow_up_3_time,
-              timestamp: followUpDate
+              timestamp: followUp3Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.unsubscribed++;
           }
         }
         
         // Onboarding Follow-up 1
-        if (user.onboarding_follow_up_1_date && user.onboarding_follow_up_1_status) {
-          const followUpDate = followUpDates.onboardingFollowUp1;
+        if (onboardingFollowUp1Date && isFollowUpSent(user.onboarding_follow_up_1_status)) {
+          followUpSentCounts.onboardingFollowUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(onboardingFollowUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.onboardingFollowUp1.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = onboardingFollowUp1Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -578,37 +577,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'onboarding_follow_up_1_sent',
               activityDate: user.onboarding_follow_up_1_date,
               activityTime: user.onboarding_follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: onboardingFollowUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.unsubscribed++;
           }
         }
         
         // Onboarding Follow-up 2
-        if (user.onboarding_follow_up_2_date && user.onboarding_follow_up_2_status) {
-          const followUpDate = followUpDates.onboardingFollowUp2;
+        if (onboardingFollowUp2Date && isFollowUpSent(user.onboarding_follow_up_2_status)) {
+          followUpSentCounts.onboardingFollowUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(onboardingFollowUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.onboardingFollowUp2.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = onboardingFollowUp2Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -628,37 +610,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'onboarding_follow_up_2_sent',
               activityDate: user.onboarding_follow_up_2_date,
               activityTime: user.onboarding_follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: onboardingFollowUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.unsubscribed++;
           }
         }
         
         // Calendly Follow-up 1
-        if (user.calendly_follow_up_1_date && user.calendly_follow_up_1_status) {
-          const followUpDate = followUpDates.calendlyFollowUp1;
+        if (calendlyFollowUp1Date && isFollowUpSent(user.calendly_follow_up_1_status)) {
+          followUpSentCounts.calendlyFollowUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(calendlyFollowUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.calendlyFollowUp1.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = calendlyFollowUp1Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -678,37 +643,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'calendly_follow_up_1_sent',
               activityDate: user.calendly_follow_up_1_date,
               activityTime: user.calendly_follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: calendlyFollowUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.unsubscribed++;
           }
         }
         
         // Calendly Follow-up 2
-        if (user.calendly_follow_up_2_date && user.calendly_follow_up_2_status) {
-          const followUpDate = followUpDates.calendlyFollowUp2;
+        if (calendlyFollowUp2Date && isFollowUpSent(user.calendly_follow_up_2_status)) {
+          followUpSentCounts.calendlyFollowUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(calendlyFollowUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.calendlyFollowUp2.sent++;
             
             // Add to hourly chart data
-            const hour = followUpDate.getHours();
+            const hour = calendlyFollowUp2Date.getHours();
             const hourIndex = chartData.findIndex(data => {
               const dataHour = new Date(data.date).getHours();
               return dataHour === hour;
@@ -728,124 +676,197 @@ router.get("/stats", async (req, res) => {
               activityType: 'calendly_follow_up_2_sent',
               activityDate: user.calendly_follow_up_2_date,
               activityTime: user.calendly_follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: calendlyFollowUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.unsubscribed++;
           }
         }
         
-        // Process replies
-        if (user.email_reply_date && user.replied) {
-          const replyDate = parseDateTime(user.email_reply_date, user.email_reply_time);
+        // Process replies and determine which email prompted the reply
+        if (replyDate && isWithinInterval(replyDate, { start: fromDate, end: toDate })) {
+          stats.totalReplies++;
           
-          if (replyDate && isWithinInterval(replyDate, { start: fromDate, end: toDate })) {
-            stats.totalReplies++;
-            
-            // Add to hourly chart data
-            const hour = replyDate.getHours();
-            const hourIndex = chartData.findIndex(data => {
-              const dataHour = new Date(data.date).getHours();
-              return dataHour === hour;
-            });
-            
-            if (hourIndex !== -1) {
-              chartData[hourIndex].repliesReceived++;
+          // Add to hourly chart data
+          const hour = replyDate.getHours();
+          const hourIndex = chartData.findIndex(data => {
+            const dataHour = new Date(data.date).getHours();
+            return dataHour === hour;
+          });
+          
+          if (hourIndex !== -1) {
+            chartData[hourIndex].repliesReceived++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `reply_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'reply_received',
+            activityDate: user.email_reply_date,
+            activityTime: user.email_reply_time,
+            timestamp: replyDate
+          });
+          
+          // Determine which email prompted the reply
+          const sourceEmail = determineSourceEmail(replyDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.replied++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.replied++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.replied++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.replied++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.replied++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.replied++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.replied++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `reply_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'reply_received',
-              activityDate: user.email_reply_date,
-              activityTime: user.email_reply_time,
-              timestamp: replyDate
-            });
           }
         }
         
         // Process calendly clicks
-        if (user.calendly_click_date && user.calendly_link_clicked) {
-          const clickDate = parseDateTime(user.calendly_click_date, user.calendly_click_time);
+        if (calendlyClickDate && isWithinInterval(calendlyClickDate, { start: fromDate, end: toDate })) {
+          stats.totalCalendlyClicks++;
           
-          if (clickDate && isWithinInterval(clickDate, { start: fromDate, end: toDate })) {
-            stats.totalCalendlyClicks++;
-            
-            // Add to hourly chart data
-            const hour = clickDate.getHours();
-            const hourIndex = chartData.findIndex(data => {
-              const dataHour = new Date(data.date).getHours();
-              return dataHour === hour;
-            });
-            
-            if (hourIndex !== -1) {
-              chartData[hourIndex].calendlyClicks++;
+          // Add to hourly chart data
+          const hour = calendlyClickDate.getHours();
+          const hourIndex = chartData.findIndex(data => {
+            const dataHour = new Date(data.date).getHours();
+            return dataHour === hour;
+          });
+          
+          if (hourIndex !== -1) {
+            chartData[hourIndex].calendlyClicks++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `calendly_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'calendly_clicked',
+            activityDate: user.calendly_click_date,
+            activityTime: user.calendly_click_time,
+            timestamp: calendlyClickDate
+          });
+          
+          // Determine which email prompted the click
+          const sourceEmail = determineSourceEmail(calendlyClickDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.calendlyClicked++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.calendlyClicked++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.calendlyClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.calendlyClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.calendlyClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.calendlyClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.calendlyClicked++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `calendly_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'calendly_clicked',
-              activityDate: user.calendly_click_date,
-              activityTime: user.calendly_click_time,
-              timestamp: clickDate
-            });
           }
         }
         
         // Process onboarding clicks
-        if (user.onboarding_click_date && user.onboarding_link_clicked) {
-          const clickDate = parseDateTime(user.onboarding_click_date, user.onboarding_click_time);
+        if (onboardingClickDate && isWithinInterval(onboardingClickDate, { start: fromDate, end: toDate })) {
+          stats.totalOnboardingClicks++;
           
-          if (clickDate && isWithinInterval(clickDate, { start: fromDate, end: toDate })) {
-            stats.totalOnboardingClicks++;
-            
-            // Add to hourly chart data
-            const hour = clickDate.getHours();
-            const hourIndex = chartData.findIndex(data => {
-              const dataHour = new Date(data.date).getHours();
-              return dataHour === hour;
-            });
-            
-            if (hourIndex !== -1) {
-              chartData[hourIndex].onboardingClicks++;
+          // Add to hourly chart data
+          const hour = onboardingClickDate.getHours();
+          const hourIndex = chartData.findIndex(data => {
+            const dataHour = new Date(data.date).getHours();
+            return dataHour === hour;
+          });
+          
+          if (hourIndex !== -1) {
+            chartData[hourIndex].onboardingClicks++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `onboarding_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_clicked',
+            activityDate: user.onboarding_click_date,
+            activityTime: user.onboarding_click_time,
+            timestamp: onboardingClickDate
+          });
+          
+          // Determine which email prompted the click
+          const sourceEmail = determineSourceEmail(onboardingClickDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.onboardingClicked++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.onboardingClicked++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.onboardingClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.onboardingClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.onboardingClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.onboardingClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.onboardingClicked++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `onboarding_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'onboarding_clicked',
-              activityDate: user.onboarding_click_date,
-              activityTime: user.onboarding_click_time,
-              timestamp: clickDate
-            });
+          }
+        }
+        
+        // Process unsubscribes and determine which email prompted the unsubscribe
+        if (unsubscribeDate && isWithinInterval(unsubscribeDate, { start: fromDate, end: toDate })) {
+          stats.totalUnsubscribes++;
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `unsubscribe_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'unsubscribed',
+            activityDate: user.unsubscribe_date,
+            activityTime: null,
+            timestamp: unsubscribeDate
+          });
+          
+          // Determine which email prompted the unsubscribe
+          const sourceEmail = determineSourceEmail(unsubscribeDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.unsubscribed++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.unsubscribed++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.unsubscribed++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.unsubscribed++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.unsubscribed++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.unsubscribed++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.unsubscribed++;
+            }
           }
         }
         
@@ -917,28 +938,18 @@ router.get("/stats", async (req, res) => {
             });
           }
         }
-        
-        // Count unsubscribes
-        if (user.unsubscribed && user.unsubscribe_date) {
-          const unsubDate = parseDateTime(user.unsubscribe_date, null);
-          
-          if (unsubDate && isWithinInterval(unsubDate, { start: fromDate, end: toDate })) {
-            stats.totalUnsubscribes++;
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `unsubscribe_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'unsubscribed',
-              activityDate: user.unsubscribe_date,
-              activityTime: null,
-              timestamp: unsubDate
-            });
-          }
-        }
+      });
+      
+      // Log follow-up counts for debugging
+      console.log("Total follow-up sent counts:", followUpSentCounts);
+      console.log("Filtered follow-up counts in time range:", {
+        followUp1: stats.totalFollowUps.followUp1.sent,
+        followUp2: stats.totalFollowUps.followUp2.sent,
+        followUp3: stats.totalFollowUps.followUp3.sent,
+        onboardingFollowUp1: stats.totalFollowUps.onboardingFollowUp1.sent,
+        onboardingFollowUp2: stats.totalFollowUps.onboardingFollowUp2.sent,
+        calendlyFollowUp1: stats.totalFollowUps.calendlyFollowUp1.sent,
+        calendlyFollowUp2: stats.totalFollowUps.calendlyFollowUp2.sent
       });
       
       // Sort recent activity by timestamp (newest first)
@@ -965,6 +976,7 @@ router.get("/stats", async (req, res) => {
         stats,
         chartData,
         recentActivity: recentActivity.slice(0, 20),
+        followUpSentCounts, // Include for debugging
         status: "success"
       });
     } else {
@@ -996,15 +1008,26 @@ router.get("/stats", async (req, res) => {
       
       // Process each user's data
       users.forEach(user => {
-        // Store dates for later comparison
+        // Parse all the dates
+        const firstEmailDate = parseDateTime(user.first_email_date, user.first_email_time);
+        const followUp1Date = parseDateTime(user.follow_up_1_date, user.follow_up_1_time);
+        const followUp2Date = parseDateTime(user.follow_up_2_date, user.follow_up_2_time);
+        const followUp3Date = parseDateTime(user.follow_up_3_date, user.follow_up_3_time);
+        const onboardingFollowUp1Date = parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time);
+        const onboardingFollowUp2Date = parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time);
+        const calendlyFollowUp1Date = parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time);
+        const calendlyFollowUp2Date = parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time);
+        
+        // Store dates for all email events
         const followUpDates = {
-          followUp1: parseDateTime(user.follow_up_1_date, user.follow_up_1_time),
-          followUp2: parseDateTime(user.follow_up_2_date, user.follow_up_2_time),
-          followUp3: parseDateTime(user.follow_up_3_date, user.follow_up_3_time),
-          onboardingFollowUp1: parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time),
-          onboardingFollowUp2: parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time),
-          calendlyFollowUp1: parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time),
-          calendlyFollowUp2: parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time)
+          firstEmail: firstEmailDate,
+          followUp1: followUp1Date,
+          followUp2: followUp2Date,
+          followUp3: followUp3Date,
+          onboardingFollowUp1: onboardingFollowUp1Date,
+          onboardingFollowUp2: onboardingFollowUp2Date,
+          calendlyFollowUp1: calendlyFollowUp1Date,
+          calendlyFollowUp2: calendlyFollowUp2Date
         };
         
         const replyDate = user.replied ? parseDateTime(user.email_reply_date, user.email_reply_time) : null;
@@ -1013,10 +1036,8 @@ router.get("/stats", async (req, res) => {
         const unsubscribeDate = user.unsubscribed ? parseDateTime(user.unsubscribe_date, null) : null;
         
         // Process email sent (both scheduled + sent)
-        if (user.first_email_date && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
-          const emailDate = parseDateTime(user.first_email_date, user.first_email_time);
-          
-          if (emailDate && isWithinInterval(emailDate, { start: fromDate, end: toDate })) {
+        if (firstEmailDate && (user.first_email_status === 'sent' || user.first_email_status === 'scheduled')) {
+          if (isWithinInterval(firstEmailDate, { start: fromDate, end: toDate })) {
             stats.totalEmails++;
             
             // Count as delivered only if status is 'sent' and not bounced
@@ -1029,7 +1050,7 @@ router.get("/stats", async (req, res) => {
             }
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(emailDate, 'yyyy-MM-dd');
+            const formattedDate = format(firstEmailDate, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1055,22 +1076,21 @@ router.get("/stats", async (req, res) => {
               activityType: user.is_bounced ? 'email_bounced' : 'email_sent',
               activityDate: user.first_email_date,
               activityTime: user.first_email_time,
-              timestamp: emailDate
+              timestamp: firstEmailDate
             });
           }
         }
         
-        // Process follow-up emails
-        
+        // Process regular follow-ups
         // Follow-up 1
-        if (user.follow_up_1_date && user.follow_up_1_status) {
-          const followUpDate = followUpDates.followUp1;
+        if (followUp1Date && isFollowUpSent(user.follow_up_1_status)) {
+          followUpSentCounts.followUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp1.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(followUp1Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1089,37 +1109,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_1_sent',
               activityDate: user.follow_up_1_date,
               activityTime: user.follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: followUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp1.unsubscribed++;
           }
         }
         
         // Follow-up 2
-        if (user.follow_up_2_date && user.follow_up_2_status) {
-          const followUpDate = followUpDates.followUp2;
+        if (followUp2Date && isFollowUpSent(user.follow_up_2_status)) {
+          followUpSentCounts.followUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp2.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(followUp2Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1138,37 +1141,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_2_sent',
               activityDate: user.follow_up_2_date,
               activityTime: user.follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: followUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp2.unsubscribed++;
           }
         }
         
         // Follow-up 3
-        if (user.follow_up_3_date && user.follow_up_3_status) {
-          const followUpDate = followUpDates.followUp3;
+        if (followUp3Date && isFollowUpSent(user.follow_up_3_status)) {
+          followUpSentCounts.followUp3++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(followUp3Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.followUp3.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(followUp3Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1187,37 +1173,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'follow_up_3_sent',
               activityDate: user.follow_up_3_date,
               activityTime: user.follow_up_3_time,
-              timestamp: followUpDate
+              timestamp: followUp3Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.followUp3.unsubscribed++;
           }
         }
         
         // Onboarding Follow-up 1
-        if (user.onboarding_follow_up_1_date && user.onboarding_follow_up_1_status) {
-          const followUpDate = followUpDates.onboardingFollowUp1;
+        if (onboardingFollowUp1Date && isFollowUpSent(user.onboarding_follow_up_1_status)) {
+          followUpSentCounts.onboardingFollowUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(onboardingFollowUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.onboardingFollowUp1.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(onboardingFollowUp1Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1236,37 +1205,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'onboarding_follow_up_1_sent',
               activityDate: user.onboarding_follow_up_1_date,
               activityTime: user.onboarding_follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: onboardingFollowUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp1.unsubscribed++;
           }
         }
         
         // Onboarding Follow-up 2
-        if (user.onboarding_follow_up_2_date && user.onboarding_follow_up_2_status) {
-          const followUpDate = followUpDates.onboardingFollowUp2;
+        if (onboardingFollowUp2Date && isFollowUpSent(user.onboarding_follow_up_2_status)) {
+          followUpSentCounts.onboardingFollowUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(onboardingFollowUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.onboardingFollowUp2.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(onboardingFollowUp2Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1285,37 +1237,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'onboarding_follow_up_2_sent',
               activityDate: user.onboarding_follow_up_2_date,
               activityTime: user.onboarding_follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: onboardingFollowUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.onboardingFollowUp2.unsubscribed++;
           }
         }
         
         // Calendly Follow-up 1
-        if (user.calendly_follow_up_1_date && user.calendly_follow_up_1_status) {
-          const followUpDate = followUpDates.calendlyFollowUp1;
+        if (calendlyFollowUp1Date && isFollowUpSent(user.calendly_follow_up_1_status)) {
+          followUpSentCounts.calendlyFollowUp1++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(calendlyFollowUp1Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.calendlyFollowUp1.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(calendlyFollowUp1Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1334,37 +1269,20 @@ router.get("/stats", async (req, res) => {
               activityType: 'calendly_follow_up_1_sent',
               activityDate: user.calendly_follow_up_1_date,
               activityTime: user.calendly_follow_up_1_time,
-              timestamp: followUpDate
+              timestamp: calendlyFollowUp1Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp1.unsubscribed++;
           }
         }
         
         // Calendly Follow-up 2
-        if (user.calendly_follow_up_2_date && user.calendly_follow_up_2_status) {
-          const followUpDate = followUpDates.calendlyFollowUp2;
+        if (calendlyFollowUp2Date && isFollowUpSent(user.calendly_follow_up_2_status)) {
+          followUpSentCounts.calendlyFollowUp2++;
           
-          if (followUpDate && isWithinInterval(followUpDate, { start: fromDate, end: toDate })) {
+          if (isWithinInterval(calendlyFollowUp2Date, { start: fromDate, end: toDate })) {
             stats.totalFollowUps.calendlyFollowUp2.sent++;
             
             // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(followUpDate, 'yyyy-MM-dd');
+            const formattedDate = format(calendlyFollowUp2Date, 'yyyy-MM-dd');
             
             // Find the matching day in chartData
             const dayIndex = chartData.findIndex(day => day.date === formattedDate);
@@ -1383,121 +1301,194 @@ router.get("/stats", async (req, res) => {
               activityType: 'calendly_follow_up_2_sent',
               activityDate: user.calendly_follow_up_2_date,
               activityTime: user.calendly_follow_up_2_time,
-              timestamp: followUpDate
+              timestamp: calendlyFollowUp2Date
             });
-          }
-          
-          // Check if actions happened after this follow-up
-          if (replyDate && isAfter(replyDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.replied++;
-          }
-          
-          if (onboardingClickDate && isAfter(onboardingClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.onboardingClicked++;
-          }
-          
-          if (calendlyClickDate && isAfter(calendlyClickDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.calendlyClicked++;
-          }
-          
-          if (unsubscribeDate && isAfter(unsubscribeDate, followUpDate)) {
-            stats.totalFollowUps.calendlyFollowUp2.unsubscribed++;
           }
         }
         
-        // Process replies
-        if (user.email_reply_date && user.replied) {
-          const replyDate = parseDateTime(user.email_reply_date, user.email_reply_time);
+        // Process replies and determine which email prompted the reply
+        if (replyDate && isWithinInterval(replyDate, { start: fromDate, end: toDate })) {
+          stats.totalReplies++;
           
-          if (replyDate && isWithinInterval(replyDate, { start: fromDate, end: toDate })) {
-            stats.totalReplies++;
-            
-            // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(replyDate, 'yyyy-MM-dd');
-            
-            // Find the matching day in chartData
-            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-            
-            if (dayIndex !== -1) {
-              chartData[dayIndex].repliesReceived++;
+          // Format the date to yyyy-MM-dd for comparison
+          const formattedDate = format(replyDate, 'yyyy-MM-dd');
+          
+          // Find the matching day in chartData
+          const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+          
+          if (dayIndex !== -1) {
+            chartData[dayIndex].repliesReceived++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `reply_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'reply_received',
+            activityDate: user.email_reply_date,
+            activityTime: user.email_reply_time,
+            timestamp: replyDate
+          });
+          
+          // Determine which email prompted the reply
+          const sourceEmail = determineSourceEmail(replyDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.replied++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.replied++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.replied++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.replied++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.replied++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.replied++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.replied++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `reply_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'reply_received',
-              activityDate: user.email_reply_date,
-              activityTime: user.email_reply_time,
-              timestamp: replyDate
-            });
           }
         }
         
         // Process calendly clicks
-        if (user.calendly_click_date && user.calendly_link_clicked) {
-          const clickDate = parseDateTime(user.calendly_click_date, user.calendly_click_time);
+        if (calendlyClickDate && isWithinInterval(calendlyClickDate, { start: fromDate, end: toDate })) {
+          stats.totalCalendlyClicks++;
           
-          if (clickDate && isWithinInterval(clickDate, { start: fromDate, end: toDate })) {
-            stats.totalCalendlyClicks++;
-            
-            // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(clickDate, 'yyyy-MM-dd');
-            
-            // Find the matching day in chartData
-            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-            
-            if (dayIndex !== -1) {
-              chartData[dayIndex].calendlyClicks++;
+          // Format the date to yyyy-MM-dd for comparison
+          const formattedDate = format(calendlyClickDate, 'yyyy-MM-dd');
+          
+          // Find the matching day in chartData
+          const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+          
+          if (dayIndex !== -1) {
+            chartData[dayIndex].calendlyClicks++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `calendly_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'calendly_clicked',
+            activityDate: user.calendly_click_date,
+            activityTime: user.calendly_click_time,
+            timestamp: calendlyClickDate
+          });
+          
+          // Determine which email prompted the click
+          const sourceEmail = determineSourceEmail(calendlyClickDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.calendlyClicked++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.calendlyClicked++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.calendlyClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.calendlyClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.calendlyClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.calendlyClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.calendlyClicked++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `calendly_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'calendly_clicked',
-              activityDate: user.calendly_click_date,
-              activityTime: user.calendly_click_time,
-              timestamp: clickDate
-            });
           }
         }
         
         // Process onboarding clicks
-        if (user.onboarding_click_date && user.onboarding_link_clicked) {
-          const clickDate = parseDateTime(user.onboarding_click_date, user.onboarding_click_time);
+        if (onboardingClickDate && isWithinInterval(onboardingClickDate, { start: fromDate, end: toDate })) {
+          stats.totalOnboardingClicks++;
           
-          if (clickDate && isWithinInterval(clickDate, { start: fromDate, end: toDate })) {
-            stats.totalOnboardingClicks++;
-            
-            // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(clickDate, 'yyyy-MM-dd');
-            
-            // Find the matching day in chartData
-            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-            
-            if (dayIndex !== -1) {
-              chartData[dayIndex].onboardingClicks++;
+          // Format the date to yyyy-MM-dd for comparison
+          const formattedDate = format(onboardingClickDate, 'yyyy-MM-dd');
+          
+          // Find the matching day in chartData
+          const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+          
+          if (dayIndex !== -1) {
+            chartData[dayIndex].onboardingClicks++;
+          }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `onboarding_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_clicked',
+            activityDate: user.onboarding_click_date,
+            activityTime: user.onboarding_click_time,
+            timestamp: onboardingClickDate
+          });
+          
+          // Determine which email prompted the click
+          const sourceEmail = determineSourceEmail(onboardingClickDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.onboardingClicked++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.onboardingClicked++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.onboardingClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.onboardingClicked++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.onboardingClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.onboardingClicked++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.onboardingClicked++;
             }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `onboarding_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'onboarding_clicked',
-              activityDate: user.onboarding_click_date,
-              activityTime: user.onboarding_click_time,
-              timestamp: clickDate
-            });
+          }
+        }
+        
+        // Process unsubscribes and determine which email prompted the unsubscribe
+        if (unsubscribeDate && isWithinInterval(unsubscribeDate, { start: fromDate, end: toDate })) {
+          stats.totalUnsubscribes++;
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `unsubscribe_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'unsubscribed',
+            activityDate: user.unsubscribe_date,
+            activityTime: null,
+            timestamp: unsubscribeDate
+          });
+          
+          // Determine which email prompted the unsubscribe
+          const sourceEmail = determineSourceEmail(unsubscribeDate, followUpDates);
+          if (sourceEmail) {
+            // Increment the appropriate counter
+            if (sourceEmail === 'followUp1') {
+              stats.totalFollowUps.followUp1.unsubscribed++;
+            } else if (sourceEmail === 'followUp2') {
+              stats.totalFollowUps.followUp2.unsubscribed++;
+            } else if (sourceEmail === 'followUp3') {
+              stats.totalFollowUps.followUp3.unsubscribed++;
+            } else if (sourceEmail === 'onboardingFollowUp1') {
+              stats.totalFollowUps.onboardingFollowUp1.unsubscribed++;
+            } else if (sourceEmail === 'onboardingFollowUp2') {
+              stats.totalFollowUps.onboardingFollowUp2.unsubscribed++;
+            } else if (sourceEmail === 'calendlyFollowUp1') {
+              stats.totalFollowUps.calendlyFollowUp1.unsubscribed++;
+            } else if (sourceEmail === 'calendlyFollowUp2') {
+              stats.totalFollowUps.calendlyFollowUp2.unsubscribed++;
+            }
           }
         }
         
@@ -1564,28 +1555,18 @@ router.get("/stats", async (req, res) => {
             });
           }
         }
-        
-        // Count unsubscribes
-        if (user.unsubscribed && user.unsubscribe_date) {
-          const unsubDate = parseDateTime(user.unsubscribe_date, null);
-          
-          if (unsubDate && isWithinInterval(unsubDate, { start: fromDate, end: toDate })) {
-            stats.totalUnsubscribes++;
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `unsubscribe_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'unsubscribed',
-              activityDate: user.unsubscribe_date,
-              activityTime: null,
-              timestamp: unsubDate
-            });
-          }
-        }
+      });
+      
+      // Log follow-up counts for debugging
+      console.log("Total follow-up sent counts:", followUpSentCounts);
+      console.log("Filtered follow-up counts in time range:", {
+        followUp1: stats.totalFollowUps.followUp1.sent,
+        followUp2: stats.totalFollowUps.followUp2.sent,
+        followUp3: stats.totalFollowUps.followUp3.sent,
+        onboardingFollowUp1: stats.totalFollowUps.onboardingFollowUp1.sent,
+        onboardingFollowUp2: stats.totalFollowUps.onboardingFollowUp2.sent,
+        calendlyFollowUp1: stats.totalFollowUps.calendlyFollowUp1.sent,
+        calendlyFollowUp2: stats.totalFollowUps.calendlyFollowUp2.sent
       });
       
       // Sort recent activity by timestamp (newest first)
@@ -1596,7 +1577,7 @@ router.get("/stats", async (req, res) => {
         return b.timestamp - a.timestamp;
       });
       
-      // Calculate rates - use totalSentEmails for more accurate rates
+      // Calculate rates - use totalEmails for more accurate rates
       const totalSentEmails = stats.totalDelivered + stats.totalBounced;
       stats.replyRate = totalSentEmails > 0 ? (stats.totalReplies / totalSentEmails) * 100 : 0;
       stats.bounceRate = totalSentEmails > 0 ? (stats.totalBounced / totalSentEmails) * 100 : 0;
@@ -1612,6 +1593,7 @@ router.get("/stats", async (req, res) => {
         stats,
         chartData,
         recentActivity: recentActivity.slice(0, 20),
+        followUpSentCounts, // Include for debugging
         status: "success"
       });
     }
@@ -1684,6 +1666,7 @@ router.get("/", async (req, res) => {
  * GET /api/dashboard/recent-activity
  * Get recent activity for the dashboard
  */
+// Get recent activity for the last 30 days, organized by activity type
 router.get("/recent-activity", async (req, res) => {
   try {
     console.log("Fetching recent activity...");
@@ -1697,12 +1680,35 @@ router.get("/recent-activity", async (req, res) => {
     if (users.length === 0) {
       return res.json({
         activities: [],
+        activityByType: {},
         status: "success"
       });
     }
     
+    // Calculate date for 30 days ago
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
     // Collect all activities
     let allActivities = [];
+    let activityByType = {
+      email_sent: [],
+      email_bounced: [],
+      follow_up_1_sent: [],
+      follow_up_2_sent: [],
+      follow_up_3_sent: [],
+      onboarding_follow_up_1_sent: [],
+      onboarding_follow_up_2_sent: [],
+      calendly_follow_up_1_sent: [],
+      calendly_follow_up_2_sent: [],
+      reply_received: [],
+      calendly_clicked: [],
+      onboarding_clicked: [],
+      onboarding_completed: [],
+      video_call_scheduled: [],
+      unsubscribed: []
+    };
+    
     let dateDebug = new Set(); // For debugging date ranges
     
     // Helper function to parse dates consistently and more robustly
@@ -1747,7 +1753,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.first_email_date, user.first_email_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `email_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1759,7 +1765,18 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.first_email_time,
               dateString: `${user.first_email_date} ${user.first_email_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              if (user.is_bounced) {
+                activityByType.email_bounced.push(activity);
+              } else {
+                activityByType.email_sent.push(activity);
+              }
+            }
           }
         }
         
@@ -1768,7 +1785,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.follow_up_1_date, user.follow_up_1_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `follow_up_1_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1780,7 +1797,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.follow_up_1_time,
               dateString: `${user.follow_up_1_date} ${user.follow_up_1_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.follow_up_1_sent.push(activity);
+            }
           }
         }
         
@@ -1789,7 +1813,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.follow_up_2_date, user.follow_up_2_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `follow_up_2_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1801,7 +1825,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.follow_up_2_time,
               dateString: `${user.follow_up_2_date} ${user.follow_up_2_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.follow_up_2_sent.push(activity);
+            }
           }
         }
         
@@ -1810,7 +1841,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.follow_up_3_date, user.follow_up_3_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `follow_up_3_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1822,7 +1853,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.follow_up_3_time,
               dateString: `${user.follow_up_3_date} ${user.follow_up_3_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.follow_up_3_sent.push(activity);
+            }
           }
         }
         
@@ -1831,7 +1869,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.onboarding_follow_up_1_date, user.onboarding_follow_up_1_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `onboarding_follow_up_1_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1843,7 +1881,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.onboarding_follow_up_1_time,
               dateString: `${user.onboarding_follow_up_1_date} ${user.onboarding_follow_up_1_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.onboarding_follow_up_1_sent.push(activity);
+            }
           }
         }
         
@@ -1852,7 +1897,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.onboarding_follow_up_2_date, user.onboarding_follow_up_2_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `onboarding_follow_up_2_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1864,7 +1909,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.onboarding_follow_up_2_time,
               dateString: `${user.onboarding_follow_up_2_date} ${user.onboarding_follow_up_2_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.onboarding_follow_up_2_sent.push(activity);
+            }
           }
         }
         
@@ -1873,7 +1925,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.calendly_follow_up_1_date, user.calendly_follow_up_1_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `calendly_follow_up_1_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1885,7 +1937,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.calendly_follow_up_1_time,
               dateString: `${user.calendly_follow_up_1_date} ${user.calendly_follow_up_1_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.calendly_follow_up_1_sent.push(activity);
+            }
           }
         }
         
@@ -1894,7 +1953,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.calendly_follow_up_2_date, user.calendly_follow_up_2_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `calendly_follow_up_2_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1906,7 +1965,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.calendly_follow_up_2_time,
               dateString: `${user.calendly_follow_up_2_date} ${user.calendly_follow_up_2_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.calendly_follow_up_2_sent.push(activity);
+            }
           }
         }
         
@@ -1915,7 +1981,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.email_reply_date, user.email_reply_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `reply_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1927,7 +1993,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.email_reply_time,
               dateString: `${user.email_reply_date} ${user.email_reply_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.reply_received.push(activity);
+            }
           }
         }
         
@@ -1936,7 +2009,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.calendly_click_date, user.calendly_click_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `calendly_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1948,7 +2021,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.calendly_click_time,
               dateString: `${user.calendly_click_date} ${user.calendly_click_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.calendly_clicked.push(activity);
+            }
           }
         }
         
@@ -1957,7 +2037,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.onboarding_click_date, user.onboarding_click_time);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `onboarding_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1969,7 +2049,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: user.onboarding_click_time,
               dateString: `${user.onboarding_click_date} ${user.onboarding_click_time || '00:00:00'}`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.onboarding_clicked.push(activity);
+            }
           }
         }
         
@@ -1978,7 +2065,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.onboarding_date, null);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `onboarding_complete_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -1990,7 +2077,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: null,
               dateString: `${user.onboarding_date} 00:00:00`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.onboarding_completed.push(activity);
+            }
           }
         }
         
@@ -1999,7 +2093,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.video_call_date, null);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `video_call_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -2011,7 +2105,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: null,
               dateString: `${user.video_call_date} 00:00:00`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.video_call_scheduled.push(activity);
+            }
           }
         }
         
@@ -2020,7 +2121,7 @@ router.get("/recent-activity", async (req, res) => {
           const timestamp = parseDateTime(user.unsubscribe_date, null);
           
           if (timestamp) {
-            allActivities.push({
+            const activity = {
               id: `unsubscribe_${user.id}`,
               userId: user.user_id,
               username: user.username || 'Unknown',
@@ -2032,7 +2133,14 @@ router.get("/recent-activity", async (req, res) => {
               activityTime: null,
               dateString: `${user.unsubscribe_date} 00:00:00`,
               timestamp: timestamp.getTime()
-            });
+            };
+            
+            allActivities.push(activity);
+            
+            // Add to appropriate category if in the last 30 days
+            if (timestamp >= thirtyDaysAgo) {
+              activityByType.unsubscribed.push(activity);
+            }
           }
         }
       } catch (err) {
@@ -2041,34 +2149,35 @@ router.get("/recent-activity", async (req, res) => {
       }
     });
     
-
+    // Log the date range for debugging
+    console.log(`Date range in data: ${Array.from(dateDebug).sort().join(', ')}`);
     
-    // Log the earliest and latest timestamps before sorting
-    if (allActivities.length > 0) {
-      const timestamps = allActivities.map(a => a.timestamp);
-      const minTimestamp = new Date(Math.min(...timestamps));
-      const maxTimestamp = new Date(Math.max(...timestamps));
-      console.log(`Timestamp range: ${minTimestamp.toISOString()} to ${maxTimestamp.toISOString()}`);
-    }
-    
-    // Sort by timestamp (most recent first)
+    // Sort all activities by timestamp (most recent first)
     allActivities.sort((a, b) => b.timestamp - a.timestamp);
     
-    // Get the most recent activities (limit to 100 to avoid too much data)
-    const recentActivities = allActivities.slice(0, 250);
+    // Get the most recent activities (limit to 250 for overall feed)
+    const recentActivities = allActivities;
     
-    // Log the earliest and latest activities after sorting
-    if (recentActivities.length > 0) {
-      const firstActivity = recentActivities[0];
-      const lastActivity = recentActivities[recentActivities.length - 1];
-      console.log(`First activity: ${firstActivity.activityDate} (${firstActivity.activityType})`);
-      console.log(`Last activity: ${lastActivity.activityDate} (${lastActivity.activityType})`);
-    }
+    // Sort each category by timestamp (most recent first)
+    Object.keys(activityByType).forEach(key => {
+      activityByType[key].sort((a, b) => b.timestamp - a.timestamp);
+    });
+    
+    // Log stats for last 30 days
+    console.log("ACTIVITY STATS FOR LAST 30 DAYS:");
+    Object.keys(activityByType).forEach(key => {
+      console.log(`${key}: ${activityByType[key].length} activities`);
+    });
     
     // Return the results
     res.json({
       activities: recentActivities,
+      activityByType: activityByType,
       total: allActivities.length,
+      last30Days: {
+        startDate: thirtyDaysAgo.toISOString().split('T')[0],
+        totalActivities: Object.values(activityByType).reduce((sum, arr) => sum + arr.length, 0)
+      },
       status: "success"
     });
     

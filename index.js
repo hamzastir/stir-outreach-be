@@ -28,6 +28,8 @@ import approvedUsersRoutes from "./src/routes/approvedUsers.js";
 import yetToApprovedRoutes from "./src/routes/yet-to-approved-leads.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import calendlyRoutes from "./src/routes/calendly.js";
+import instagramRoutes from "./src/routes/instagram-connects-users.js";
+
 import { 
   setupFollowupEmailCron, 
   sendFollowupEmails,
@@ -379,7 +381,7 @@ app.use("/api/outreach", approvedUsersRoutes);
 app.use("/api/yet-to-approved", yetToApprovedRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/calendly-webhook", calendlyRoutes);
-
+app.use("/api/instagram", instagramRoutes);
 app.get("/run", async (req, res) => {
   try {
     const campaignId = await runCampaign();

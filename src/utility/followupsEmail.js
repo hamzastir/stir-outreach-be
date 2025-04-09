@@ -43,6 +43,69 @@ const getDaysAgo = (days) => {
 };
 
 /**
+ * Checks if the current time is within the allowed window (7 PM - 11:59 PM IST, Monday-Friday)
+ * @returns {boolean} True if within allowed window, false otherwise
+ */
+const isWithinSendingWindow = () => {
+  // Get current date/time in IST
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  
+  // Check if it's weekend (Saturday = 6, Sunday = 0)
+  const day = now.getDay();
+  if (day === 0 || day === 6) {
+    console.log(`Current day is ${day === 0 ? 'Sunday' : 'Saturday'}, outside of sending window`);
+    return false;
+  }
+  
+  // Check if time is between 7 PM (19:00) and 11:59 PM (23:59)
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  
+  if (hour < 19 || hour >= 24) {
+    console.log(`Current time is ${hour}:${minute}, outside of sending window (7 PM - 11:59 PM IST)`);
+    return false;
+  }
+  
+  console.log(`Current time is ${hour}:${minute}, within sending window (7 PM - 11:59 PM IST, Monday-Friday)`);
+  return true;
+};
+
+/**
+ * Returns the next business day, skipping weekends
+ * @param {Date} date - The starting date
+ * @param {number} daysToAdd - Number of days to add
+ * @returns {Date} The next business day
+ */
+const getNextBusinessDay = (date, daysToAdd) => {
+  const result = new Date(date);
+  let daysAdded = 0;
+  
+  while (daysAdded < daysToAdd) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+    
+    // Skip weekends (0 = Sunday, 6 = Saturday)
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      daysAdded++;
+    }
+  }
+  
+  return result;
+};
+
+/**
+ * Calculate the appropriate follow-up date considering weekends
+ * @param {string} emailDate - The date of the previous email (YYYY-MM-DD)
+ * @param {number} daysToAdd - Normal days to add for follow-up
+ * @returns {string} The appropriate follow-up date (YYYY-MM-DD)
+ */
+const calculateFollowUpDate = (emailDate, daysToAdd) => {
+  const date = new Date(emailDate);
+  const nextBusinessDay = getNextBusinessDay(date, daysToAdd);
+  return nextBusinessDay.toISOString().split('T')[0];
+};
+
+/**
  * Fetches data from the Smartlead API with improved error handling.
  */
 const fetchFromApi = async (endpoint, method = "GET", body) => {
@@ -321,6 +384,7 @@ const isEmailBouncedOrBlocked = async (email) => {
     return false; // Default to allowing follow-up if record not found
   }
   
+  // Check is_bounced (corrected from is_bounce)
   if (record.is_bounced === true || record.is_blocked === true) {
     console.log(`Email ${email} is ${record.is_bounced ? 'bounced' : ''}${record.is_bounced && record.is_blocked ? ' and ' : ''}${record.is_blocked ? 'blocked' : ''}`);
     return true;
@@ -347,15 +411,21 @@ const getBaseQuery = (query) => {
  * Process leads for first follow-up
  */
 export const sendFirstFollowup = async () => {
+  // Check if we're within the sending window (7 PM - 11:59 PM IST, Monday-Friday)
+  if (!isWithinSendingWindow()) {
+    console.log("Outside of sending window (7 PM - 11:59 PM IST, Monday-Friday). Skipping first follow-up.");
+    return;
+  }
+
   console.log("Starting to send first follow-up emails...");
   console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
   
   try {
-    // Calculate date 4 days ago for first follow-up
+    // Calculate date for first follow-up considering business days
     const fourDaysAgo = getDaysAgo(4);
     console.log(`Looking for leads who received first email on or before: ${fourDaysAgo}`);
     
-    // Get leads that need first follow-up (first email sent 4+ days ago)
+    // Get leads that need first follow-up
     let query = db("stir_outreach_dashboard")
       .where("first_email_status", "sent")
       .andWhere(function() {
@@ -377,10 +447,10 @@ export const sendFirstFollowup = async () => {
             .orWhereNull("replied");
       })
       .andWhere(function() {
-        // First email must have been sent at least 4 days ago
+        // First email must have been sent at least 4 business days ago
         this.where("first_email_date", "<=", fourDaysAgo);
       })
-      // Exclude bounced and blocked emails
+      // Exclude bounced and blocked emails - CORRECTED is_bounced instead of is_bounce
       .andWhere(function() {
         this.where("is_bounced", false)
             .orWhereNull("is_bounced");
@@ -424,6 +494,16 @@ export const sendFirstFollowup = async () => {
         const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
         if (isBounceOrBlock) {
           console.log(`Skipping first follow-up for ${email} - email is bounced or blocked`);
+          continue;
+        }
+        
+        // Check first email date to determine if we should send today based on business days
+        const firstEmailDate = lead.first_email_date;
+        const appropriateFollowUpDate = calculateFollowUpDate(firstEmailDate, 4);
+        const currentDate = getCurrentISTDateTime().date;
+        
+        if (appropriateFollowUpDate > currentDate) {
+          console.log(`Follow-up date (${appropriateFollowUpDate}) is in the future. Skipping for now.`);
           continue;
         }
         
@@ -498,8 +578,10 @@ export const sendFirstFollowup = async () => {
         // Release lock
         followUpLocks[1].delete(email);
         
-        // Add a small delay between processing different leads
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Add a random delay between 1-5 minutes between processing different leads
+        const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
+        console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
         
       } catch (error) {
         console.error(`Error processing first follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -520,15 +602,21 @@ export const sendFirstFollowup = async () => {
  * Process leads for second follow-up
  */
 export const sendSecondFollowup = async () => {
+  // Check if we're within the sending window (7 PM - 11:59 PM IST, Monday-Friday)
+  if (!isWithinSendingWindow()) {
+    console.log("Outside of sending window (7 PM - 11:59 PM IST, Monday-Friday). Skipping second follow-up.");
+    return;
+  }
+
   console.log("Starting to send second follow-up emails...");
   console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
   
   try {
-    // Calculate date 2 days ago for second follow-up
+    // Calculate date for second follow-up considering business days
     const twoDaysAgo = getDaysAgo(2);
     console.log(`Looking for leads who received first follow-up on or before: ${twoDaysAgo}`);
     
-    // Get leads that need second follow-up (first follow-up sent 2+ days ago)
+    // Get leads that need second follow-up
     let query = db("stir_outreach_dashboard")
       .where("first_email_status", "sent")
       .andWhere("follow_up_1_status", true)
@@ -551,10 +639,10 @@ export const sendSecondFollowup = async () => {
             .orWhereNull("replied");
       })
       .andWhere(function() {
-        // First follow-up must have been sent at least 2 days ago
+        // First follow-up must have been sent at least 2 business days ago
         this.where("follow_up_1_date", "<=", twoDaysAgo);
       })
-      // Exclude bounced and blocked emails
+      // Exclude bounced and blocked emails - CORRECTED is_bounced instead of is_bounce
       .andWhere(function() {
         this.where("is_bounced", false)
             .orWhereNull("is_bounced");
@@ -598,6 +686,16 @@ export const sendSecondFollowup = async () => {
         const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
         if (isBounceOrBlock) {
           console.log(`Skipping second follow-up for ${email} - email is bounced or blocked`);
+          continue;
+        }
+        
+        // Check first follow-up date to determine if we should send today based on business days
+        const followUp1Date = lead.follow_up_1_date;
+        const appropriateFollowUpDate = calculateFollowUpDate(followUp1Date, 2);
+        const currentDate = getCurrentISTDateTime().date;
+        
+        if (appropriateFollowUpDate > currentDate) {
+          console.log(`Follow-up date (${appropriateFollowUpDate}) is in the future. Skipping for now.`);
           continue;
         }
         
@@ -672,8 +770,10 @@ export const sendSecondFollowup = async () => {
         // Release lock
         followUpLocks[2].delete(email);
         
-        // Add a small delay between processing different leads
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Add a random delay between 1-5 minutes between processing different leads
+        const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
+        console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
         
       } catch (error) {
         console.error(`Error processing second follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -694,15 +794,21 @@ export const sendSecondFollowup = async () => {
  * Process leads for third follow-up
  */
 export const sendThirdFollowup = async () => {
+  // Check if we're within the sending window (7 PM - 11:59 PM IST, Monday-Friday)
+  if (!isWithinSendingWindow()) {
+    console.log("Outside of sending window (7 PM - 11:59 PM IST, Monday-Friday). Skipping third follow-up.");
+    return;
+  }
+
   console.log("Starting to send third follow-up emails...");
   console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
   
   try {
-    // Calculate date 1 day ago for third follow-up
+    // Calculate date for third follow-up considering business days
     const oneDayAgo = getDaysAgo(1);
     console.log(`Looking for leads who received second follow-up on or before: ${oneDayAgo}`);
     
-    // Get leads that need third follow-up (second follow-up sent 1+ day ago)
+    // Get leads that need third follow-up
     let query = db("stir_outreach_dashboard")
       .where("first_email_status", "sent")
       .andWhere("follow_up_1_status", true)
@@ -726,10 +832,10 @@ export const sendThirdFollowup = async () => {
             .orWhereNull("replied");
       })
       .andWhere(function() {
-        // Second follow-up must have been sent at least 1 day ago
+        // Second follow-up must have been sent at least 1 business day ago
         this.where("follow_up_2_date", "<=", oneDayAgo);
       })
-      // Exclude bounced and blocked emails
+      // Exclude bounced and blocked emails - CORRECTED is_bounced instead of is_bounce
       .andWhere(function() {
         this.where("is_bounced", false)
             .orWhereNull("is_bounced");
@@ -773,6 +879,16 @@ export const sendThirdFollowup = async () => {
         const isBounceOrBlock = await isEmailBouncedOrBlocked(email);
         if (isBounceOrBlock) {
           console.log(`Skipping third follow-up for ${email} - email is bounced or blocked`);
+          continue;
+        }
+        
+        // Check second follow-up date to determine if we should send today based on business days
+        const followUp2Date = lead.follow_up_2_date;
+        const appropriateFollowUpDate = calculateFollowUpDate(followUp2Date, 1);
+        const currentDate = getCurrentISTDateTime().date;
+        
+        if (appropriateFollowUpDate > currentDate) {
+          console.log(`Follow-up date (${appropriateFollowUpDate}) is in the future. Skipping for now.`);
           continue;
         }
         
@@ -847,8 +963,10 @@ export const sendThirdFollowup = async () => {
         // Release lock
         followUpLocks[3].delete(email);
         
-        // Add a small delay between processing different leads
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Add a random delay between 1-5 minutes between processing different leads
+        const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
+        console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
         
       } catch (error) {
         console.error(`Error processing third follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -867,42 +985,82 @@ export const sendThirdFollowup = async () => {
 
 /**
  * Set up cron jobs for follow-up emails
- * All three follow-up jobs run every hour to check for eligible leads
+ * Running multiple times in the evening with random delays to distribute emails
  */
 export const setupFollowupEmailCron = () => {
-    // First follow-up at 10:00 PM IST (16:30 UTC)
-    cron.schedule('30 16 * * *', async () => {
-      console.log('Running the first follow-up email check (10:00 PM IST)...');
-      await sendFirstFollowup();
-    });
-    
-    // Second follow-up at 10:30 PM IST (17:00 UTC)
-    cron.schedule('0 17 * * *', async () => {
-      console.log('Running the second follow-up email check (10:30 PM IST)...');
-      await sendSecondFollowup();
-    });
-    
-    // Third follow-up at 11:00 PM IST (17:30 UTC)
-    cron.schedule('30 17 * * *', async () => {
-      console.log('Running the third follow-up email check (11:00 PM IST)...');
-      await sendThirdFollowup();
-    });
-    
-    console.log('Follow-up email cron jobs scheduled:');
-    console.log('- First follow-up check: Daily at 10:00 PM IST');
-    console.log('- Second follow-up check: Daily at 10:30 PM IST');
-    console.log('- Third follow-up check: Daily at 11:00 PM IST');
-    console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
-  };
+  // Check if we're within the sending window when the server starts
+  const isInWindow = isWithinSendingWindow();
+  
+  if (isInWindow) {
+    console.log("Server started within sending window. Follow-ups will only be sent at scheduled times.");
+  } else {
+    console.log("Server started outside sending window. No immediate follow-ups will be sent.");
+  }
+
+  // Set up multiple cron jobs throughout the evening (IST) on weekdays (1-5)
+  // 7:00 PM IST (13:30 UTC)
+  cron.schedule('30 13 * * 1-5', async () => {
+    console.log('Running follow-up email check (7:00 PM IST)...');
+    await sendFollowupEmails();
+  });
+  
+  // 8:00 PM IST (14:30 UTC)
+  cron.schedule('30 14 * * 1-5', async () => {
+    console.log('Running follow-up email check (8:00 PM IST)...');
+    await sendFollowupEmails();
+  });
+  
+  // 9:00 PM IST (15:30 UTC)
+  cron.schedule('30 15 * * 1-5', async () => {
+    console.log('Running follow-up email check (9:00 PM IST)...');
+    await sendFollowupEmails();
+  });
+  
+  // 10:00 PM IST (16:30 UTC)
+  cron.schedule('30 16 * * 1-5', async () => {
+    console.log('Running follow-up email check (10:00 PM IST)...');
+    await sendFollowupEmails();
+  });
+  
+  // 11:00 PM IST (17:30 UTC)
+  cron.schedule('30 17 * * 1-5', async () => {
+    console.log('Running follow-up email check (11:00 PM IST)...');
+    await sendFollowupEmails();
+  });
+  
+  console.log('Follow-up email cron jobs scheduled:');
+  console.log('- Follow-up checks: Weekdays (Monday-Friday) at 7 PM, 8 PM, 9 PM, 10 PM, and 11 PM IST');
+  console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
+};
 
 /**
  * Simplified function to run all follow-up checks in sequence
  */
 export const sendFollowupEmails = async () => {
+  // Check if we're within the sending window (7 PM - 11:59 PM IST, Monday-Friday)
+  if (!isWithinSendingWindow()) {
+    console.log("Outside of sending window (7 PM - 11:59 PM IST, Monday-Friday). Skipping all follow-ups.");
+    return;
+  }
+
   console.log("Starting follow-up email checks...");
   console.log(`User targeting mode: ${USE_ONLY_APPROVED_USERS ? 'Approved users only' : 'All users'}`);
+  
   await sendFirstFollowup();
+  
+  // Add a random delay between follow-up types (2-5 minutes)
+  const randomDelay1 = Math.floor(Math.random() * 3 * 60 * 1000) + 2 * 60 * 1000;
+  console.log(`Adding random delay of ${Math.round(randomDelay1/1000/60)} minutes before second follow-up job`);
+  await new Promise(resolve => setTimeout(resolve, randomDelay1));
+  
   await sendSecondFollowup();
+  
+  // Add another random delay between follow-up types (2-5 minutes)
+  const randomDelay2 = Math.floor(Math.random() * 3 * 60 * 1000) + 2 * 60 * 1000;
+  console.log(`Adding random delay of ${Math.round(randomDelay2/1000/60)} minutes before third follow-up job`);
+  await new Promise(resolve => setTimeout(resolve, randomDelay2));
+  
   await sendThirdFollowup();
+  
   console.log("All follow-up checks completed.");
 };

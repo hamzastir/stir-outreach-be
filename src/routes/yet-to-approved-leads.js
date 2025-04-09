@@ -11,6 +11,7 @@ router.get("/leads", async (req, res) => {
       .select(
         "iu.user_id",
         "iu.username",
+        "iu.followers_count",
         "iu.business_email",
         "pim.movie_count as total_movie_id"
       )
@@ -133,6 +134,28 @@ router.get("/irrelevant-leads", async (req, res) => {
     res.status(200).json({ irrelevantLeads });
   } catch (error) {
     console.error("Error fetching irrelevant leads:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+router.delete("/irrelevant-leads", async (req, res) => {
+  try {
+    const { business_email } = req.body;
+console.log({business_email})
+    if (!business_email) {
+      return res.status(400).json({ error: "business_email is required" });
+    }
+
+    const deletedCount = await db("influencer_outreach_irrelevant_leads")
+      .where("business_email", business_email)
+      .del();
+console.log({deletedCount})
+    if (deletedCount === 0) {
+      return res.status(404).json({ message: "No lead found with that email" });
+    }
+
+    res.status(200).json({ message: "Irrelevant lead deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting irrelevant lead:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });

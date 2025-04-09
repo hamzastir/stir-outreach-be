@@ -22,7 +22,7 @@ async function createEmailAccount() {
   const url = `https://server.smartlead.ai/api/v1/email-accounts/save?api_key=eaf95559-9524-40ec-bb75-a5bf585ce25b_94ivz0y`;
   const data = {
     id: null, // Set to null to create a new email account
-    from_name: 'Yug Dave',
+    from_name: '',
     from_email: 'yug.dave@getstir.co',
     user_name: 'yug.dave@getstir.co',
     password: 'gCTwtvPNPMTP',
