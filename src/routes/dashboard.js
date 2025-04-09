@@ -45,8 +45,7 @@ router.get("/stats", async (req, res) => {
     
     const users = await query;
     
-    // Log the first few users for debugging
-    console.log("Sample user data:", users.slice(0, 2));
+ 
     
     // If no users found, return empty result
     if (users.length === 0) {
@@ -191,7 +190,6 @@ router.get("/stats", async (req, res) => {
         toDate = endOfDay(now);
     }
     
-    console.log(`Filtering data from ${fromDate} to ${toDate}`);
     
     // Helper function to parse date and time strings
     const parseDateTime = (dateStr, timeStr) => {
@@ -929,17 +927,7 @@ router.get("/stats", async (req, res) => {
         }
       });
       
-      // Log follow-up counts for debugging
-      console.log("Total follow-up sent counts:", followUpSentCounts);
-      console.log("Filtered follow-up counts in time range:", {
-        followUp1: stats.totalFollowUps.followUp1.sent,
-        followUp2: stats.totalFollowUps.followUp2.sent,
-        followUp3: stats.totalFollowUps.followUp3.sent,
-        onboardingFollowUp1: stats.totalFollowUps.onboardingFollowUp1.sent,
-        onboardingFollowUp2: stats.totalFollowUps.onboardingFollowUp2.sent,
-        calendlyFollowUp1: stats.totalFollowUps.calendlyFollowUp1.sent,
-        calendlyFollowUp2: stats.totalFollowUps.calendlyFollowUp2.sent
-      });
+     
       
       // Sort recent activity by timestamp (newest first)
       recentActivity.sort((a, b) => {
@@ -1540,18 +1528,7 @@ router.get("/stats", async (req, res) => {
         }
       });
       
-      // Log follow-up counts for debugging
-      console.log("Total follow-up sent counts:", followUpSentCounts);
-      console.log("Filtered follow-up counts in time range:", {
-        followUp1: stats.totalFollowUps.followUp1.sent,
-        followUp2: stats.totalFollowUps.followUp2.sent,
-        followUp3: stats.totalFollowUps.followUp3.sent,
-        onboardingFollowUp1: stats.totalFollowUps.onboardingFollowUp1.sent,
-        onboardingFollowUp2: stats.totalFollowUps.onboardingFollowUp2.sent,
-        calendlyFollowUp1: stats.totalFollowUps.calendlyFollowUp1.sent,
-        calendlyFollowUp2: stats.totalFollowUps.calendlyFollowUp2.sent
-      });
-      
+    
       // Sort recent activity by timestamp (newest first)
       recentActivity.sort((a, b) => {
         if (!a.timestamp && !b.timestamp) return 0;
@@ -1653,12 +1630,10 @@ router.get("/", async (req, res) => {
 // Get recent activity for the last 30 days, organized by activity type
 router.get("/recent-activity", async (req, res) => {
   try {
-    console.log("Fetching recent activity...");
     
     // Get all users data - freshly fetched each time the route is hit
     const users = await db("stir_outreach_dashboard");
     
-    console.log(`Found ${users.length} users in the database`);
     
     // If no users found, return empty array
     if (users.length === 0) {
@@ -2134,7 +2109,6 @@ router.get("/recent-activity", async (req, res) => {
     });
     
     // Log the date range for debugging
-    console.log(`Date range in data: ${Array.from(dateDebug).sort().join(', ')}`);
     
     // Sort all activities by timestamp (most recent first)
     allActivities.sort((a, b) => b.timestamp - a.timestamp);
@@ -2147,12 +2121,7 @@ router.get("/recent-activity", async (req, res) => {
       activityByType[key].sort((a, b) => b.timestamp - a.timestamp);
     });
     
-    // Log stats for last 30 days
-    console.log("ACTIVITY STATS FOR LAST 30 DAYS:");
-    Object.keys(activityByType).forEach(key => {
-      console.log(`${key}: ${activityByType[key].length} activities`);
-    });
-    
+  
     // Return the results
     res.json({
       activities: recentActivities,
