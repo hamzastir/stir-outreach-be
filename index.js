@@ -334,7 +334,7 @@ const updateOnboardingStatus = async () => {
       .whereIn("id", userIds)
       .update({ 
         onboarding_status: "completed",
-        updated_at: new Date()
+        onboarding_date: new Date()
       });
     
     console.log(`✅ Successfully updated onboarding status for ${usersToUpdate.length} users.`);

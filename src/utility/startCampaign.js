@@ -344,15 +344,15 @@ export const updateCampaignSchedule = async (campaignId) => {
       .toString()
       .padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`;
 
-    const schedulePayload = {
-      timezone: "Asia/Kolkata",
-      days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
-      start_hour: "19:00", // 9 PM IST
-      // start_hour: currentTimeFormatted,
-      end_hour: "23:59",
-      min_time_btw_emails: 9,
-      max_new_leads_per_day: 100,
-    };
+      const schedulePayload = {
+        timezone: "Etc/GMT-7", // Using the specified timezone with UTC+07:00 offset
+        days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
+        start_hour: "08:00", // Start at 08:00
+        end_hour: "15:00",   // End at 14:00
+        min_time_btw_emails: 9,
+        max_new_leads_per_day: 100,
+      };
+      
 
     const response = await api.post(
       `campaigns/${campaignId}/schedule`,

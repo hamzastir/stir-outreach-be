@@ -247,7 +247,7 @@ router.post("/", async (req, res) => {
       
       // Update the database FIRST to mark the meeting as scheduled
       // This is critical to ensure we don't miss this step
-      const updateResult = await db("stir_outreach_dashboard")
+      await db("stir_outreach_dashboard")
         .where("business_email", bookingEmail)
         .update({
           video_call_status: "scheduled",

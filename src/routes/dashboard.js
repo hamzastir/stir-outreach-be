@@ -23,10 +23,8 @@ import {
 
 const router = express.Router();  
 
-/**
- * GET /api/dashboard/stats
- * Get dashboard statistics based on time filters
- */
+
+
 router.get("/stats", async (req, res) => {
   try {
     const { 
@@ -870,73 +868,64 @@ router.get("/stats", async (req, res) => {
           }
         }
         
-        // Process completed onboardings
-        if (user.onboarding_date && user.onboarding_status === 'completed') {
-          const onboardingDate = parseDateTime(user.onboarding_date, null);
+        // Process completed onboardings - just check the status
+        if (user.onboarding_status === 'completed') {
+          stats.totalOnboardingsCompleted++;
           
-          if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
-            stats.totalOnboardingsCompleted++;
-            
-            // For hourly data
-            const hour = onboardingDate.getHours();
-            const hourIndex = chartData.findIndex(data => {
-              const dataHour = new Date(data.date).getHours();
-              return dataHour === hour;
-            });
-            
-            if (hourIndex !== -1) {
-              chartData[hourIndex].onboardingsCompleted++;
-            }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `onboarding_complete_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'onboarding_completed',
-              activityDate: user.onboarding_date,
-              activityTime: null,
-              timestamp: onboardingDate
-            });
+          // Calculate the day index to add this to chart data
+          const currentDate = firstEmailDate || new Date(); // Use first email date or current date as fallback
+          const hour = currentDate.getHours();
+          const hourIndex = chartData.findIndex(data => {
+            const dataHour = new Date(data.date).getHours();
+            return dataHour === hour;
+          });
+          
+          if (hourIndex !== -1) {
+            chartData[hourIndex].onboardingsCompleted++;
           }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `onboarding_complete_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_completed',
+            activityDate: null,
+            activityTime: null,
+            timestamp: new Date()
+          });
         }
         
-        // Process video calls
-        if (user.video_call_date && user.video_call_status === 'scheduled') {
-          const callDate = parseDateTime(user.video_call_date, null);
+        // Process video calls - just check if status is 'scheduled'
+        if (user.video_call_status === 'scheduled') {
+          stats.totalVideoCallsScheduled++;
           
-          if (callDate && isWithinInterval(callDate, { start: fromDate, end: toDate })) {
-            stats.totalVideoCallsScheduled++;
-            
-            // Add to hourly chart data
-            const hour = callDate.getHours();
-            const hourIndex = chartData.findIndex(data => {
-              const dataHour = new Date(data.date).getHours();
-              return dataHour === hour;
-            });
-            
-            if (hourIndex !== -1) {
-              chartData[hourIndex].videoCallsScheduled++;
-            } else {
-              // If no hour is specified, add to first hour of the day
-              chartData[0].videoCallsScheduled++;
-            }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `video_call_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'video_call_scheduled',
-              activityDate: user.video_call_date,
-              activityTime: null,
-              timestamp: callDate
-            });
+          // Calculate the day index to add this to chart data
+          const currentDate = firstEmailDate || new Date(); // Use first email date or current date as fallback
+          const hour = currentDate.getHours();
+          const hourIndex = chartData.findIndex(data => {
+            const dataHour = new Date(data.date).getHours();
+            return dataHour === hour;
+          });
+          
+          if (hourIndex !== -1) {
+            chartData[hourIndex].videoCallsScheduled++;
           }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `video_call_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'video_call_scheduled',
+            activityDate: null,
+            activityTime: null,
+            timestamp: new Date()
+          });
         }
       });
       
@@ -1492,68 +1481,62 @@ router.get("/stats", async (req, res) => {
           }
         }
         
-        // Process completed onboardings
-        if (user.onboarding_date && user.onboarding_status === 'completed') {
-          const onboardingDate = parseDateTime(user.onboarding_date, null);
+        // Process completed onboardings - just check the status
+        if (user.onboarding_status === 'completed') {
+          stats.totalOnboardingsCompleted++;
           
-          if (onboardingDate && isWithinInterval(onboardingDate, { start: fromDate, end: toDate })) {
-            stats.totalOnboardingsCompleted++;
-            
-            // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(onboardingDate, 'yyyy-MM-dd');
-            
-            // Find the matching day in chartData
-            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-            
-            if (dayIndex !== -1) {
-              chartData[dayIndex].onboardingsCompleted++;
-            }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `onboarding_complete_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'onboarding_completed',
-              activityDate: user.onboarding_date,
-              activityTime: null,
-              timestamp: onboardingDate
-            });
+          // Calculate the day index to add this to chart data  
+          const currentDate = firstEmailDate || new Date(); // Use first email date or current date as fallback
+          const formattedDate = format(currentDate, 'yyyy-MM-dd');
+          
+          // Find the matching day in chartData
+          const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+          
+          if (dayIndex !== -1) {
+            chartData[dayIndex].onboardingsCompleted++;
           }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `onboarding_complete_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'onboarding_completed',
+            activityDate: null,
+            activityTime: null,
+            timestamp: new Date()
+          });
         }
         
-        // Process video calls
-        if (user.video_call_date && user.video_call_status === 'scheduled') {
-          const callDate = parseDateTime(user.video_call_date, null);
+        // Process video calls - just check if status is 'scheduled'
+        if (user.video_call_status === 'scheduled') {
+          stats.totalVideoCallsScheduled++;
           
-          if (callDate && isWithinInterval(callDate, { start: fromDate, end: toDate })) {
-            stats.totalVideoCallsScheduled++;
-            
-            // Format the date to yyyy-MM-dd for comparison
-            const formattedDate = format(callDate, 'yyyy-MM-dd');
-            
-            // Find the matching day in chartData
-            const dayIndex = chartData.findIndex(day => day.date === formattedDate);
-            
-            if (dayIndex !== -1) {
-              chartData[dayIndex].videoCallsScheduled++;
-            }
-            
-            // Add to recent activity
-            recentActivity.push({
-              id: `video_call_${user.id}`,
-              userId: user.user_id,
-              username: user.username || 'Unknown',
-              email: user.business_email || 'No email',
-              poc: user.poc || 'Unknown POC',
-              activityType: 'video_call_scheduled',
-              activityDate: user.video_call_date,
-              activityTime: null,
-              timestamp: callDate
-            });
+          // Calculate the day index to add this to chart data
+          const currentDate = firstEmailDate || new Date(); // Use first email date or current date as fallback
+          const formattedDate = format(currentDate, 'yyyy-MM-dd');
+          
+          // Find the matching day in chartData
+          const dayIndex = chartData.findIndex(day => day.date === formattedDate);
+          
+          if (dayIndex !== -1) {
+            chartData[dayIndex].videoCallsScheduled++;
           }
+          
+          // Add to recent activity
+          recentActivity.push({
+            id: `video_call_${user.id}`,
+            userId: user.user_id,
+            username: user.username || 'Unknown',
+            email: user.business_email || 'No email',
+            poc: user.poc || 'Unknown POC',
+            activityType: 'video_call_scheduled',
+            activityDate: null,
+            activityTime: null,
+            timestamp: new Date()
+          });
         }
       });
       
@@ -1607,6 +1590,7 @@ router.get("/stats", async (req, res) => {
     });
   }
 });
+
 
 /**
  * GET /api/dashboard/pocs
@@ -2061,7 +2045,7 @@ router.get("/recent-activity", async (req, res) => {
         }
         
         // Add onboarding completion activity
-        if (user.onboarding_date && user.onboarding_status === 'completed') {
+        if (user.onboarding_status === 'completed') {
           const timestamp = parseDateTime(user.onboarding_date, null);
           
           if (timestamp) {

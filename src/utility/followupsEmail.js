@@ -204,11 +204,16 @@ const findLatestSentMessage = (messageHistory) => {
 };
 
 /**
- * Checks if the lead has replied to any email
+ * Checks if anyone has replied to any message in the thread
+ * More comprehensive check to detect any replies in the conversation
  */
-const hasLeadReplied = (messageHistory) => {
+const hasAnyReplyInThread = (messageHistory) => {
   const replies = messageHistory.filter(msg => msg.type === "RECEIVED");
-  return replies.length > 0;
+  if (replies.length > 0) {
+    console.log(`Found ${replies.length} replies in the thread, skipping follow-up`);
+    return true;
+  }
+  return false;
 };
 
 /**
@@ -408,6 +413,25 @@ const getBaseQuery = (query) => {
 };
 
 /**
+ * Update the database to record that a lead has replied
+ */
+const updateReplyStatus = async (email) => {
+  console.log(`Updating reply status for ${email} in database...`);
+  
+  const updateResult = await db("stir_outreach_dashboard")
+    .where("business_email", email)
+    .update({ replied: true });
+
+  if (updateResult === 0) {
+    console.warn(`No matching record found for email: ${email} when updating reply status`);
+    return false;
+  }
+  
+  console.log(`Reply status updated successfully for ${email}`);
+  return true;
+};
+
+/**
  * Process leads for first follow-up
  */
 export const sendFirstFollowup = async () => {
@@ -507,6 +531,12 @@ export const sendFirstFollowup = async () => {
           continue;
         }
         
+        // Final time window check before acquiring lock
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during processing. Skipping remaining follow-ups.");
+          break;
+        }
+        
         // Add lock
         followUpLocks[1].add(email);
         
@@ -527,12 +557,10 @@ export const sendFirstFollowup = async () => {
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
         
-        // Check if the lead has replied
-        if (hasLeadReplied(messageHistory)) {
-          console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
-          await db("stir_outreach_dashboard")
-            .where("business_email", email)
-            .update({ replied: true });
+        // Check if ANYONE has replied to the thread (more comprehensive check)
+        if (hasAnyReplyInThread(messageHistory)) {
+          console.log(`Thread with ${lead.username} has at least one reply, updating database and skipping follow-up`);
+          await updateReplyStatus(email);
           followUpLocks[1].delete(email);
           continue;
         }
@@ -561,6 +589,13 @@ export const sendFirstFollowup = async () => {
           continue;
         }
         
+        // Final time window check
+        if (!isWithinSendingWindow()) {
+          console.log(`Sending window closed during processing ${email}. Skipping.`);
+          followUpLocks[1].delete(email);
+          continue;
+        }
+        
         // Send first follow-up
         const response = await sendFollowUpEmail(
           campaignId,
@@ -582,6 +617,12 @@ export const sendFirstFollowup = async () => {
         const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
         console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
         await new Promise(resolve => setTimeout(resolve, randomDelay));
+        
+        // Check if we're still in the sending window
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during delay. Stopping remaining follow-ups.");
+          break;
+        }
         
       } catch (error) {
         console.error(`Error processing first follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -699,6 +740,12 @@ export const sendSecondFollowup = async () => {
           continue;
         }
         
+        // Final time window check before acquiring lock
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during processing. Skipping remaining follow-ups.");
+          break;
+        }
+        
         // Add lock
         followUpLocks[2].add(email);
         
@@ -719,12 +766,10 @@ export const sendSecondFollowup = async () => {
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
         
-        // Check if the lead has replied
-        if (hasLeadReplied(messageHistory)) {
-          console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
-          await db("stir_outreach_dashboard")
-            .where("business_email", email)
-            .update({ replied: true });
+        // Check if ANYONE has replied to the thread (more comprehensive check)
+        if (hasAnyReplyInThread(messageHistory)) {
+          console.log(`Thread with ${lead.username} has at least one reply, updating database and skipping follow-up`);
+          await updateReplyStatus(email);
           followUpLocks[2].delete(email);
           continue;
         }
@@ -753,6 +798,13 @@ export const sendSecondFollowup = async () => {
           continue;
         }
         
+        // Final time window check
+        if (!isWithinSendingWindow()) {
+          console.log(`Sending window closed during processing ${email}. Skipping.`);
+          followUpLocks[2].delete(email);
+          continue;
+        }
+        
         // Send second follow-up
         const response = await sendFollowUpEmail(
           campaignId,
@@ -774,6 +826,12 @@ export const sendSecondFollowup = async () => {
         const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
         console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
         await new Promise(resolve => setTimeout(resolve, randomDelay));
+        
+        // Check if we're still in the sending window
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during delay. Stopping remaining follow-ups.");
+          break;
+        }
         
       } catch (error) {
         console.error(`Error processing second follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -892,6 +950,12 @@ export const sendThirdFollowup = async () => {
           continue;
         }
         
+        // Final time window check before acquiring lock
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during processing. Skipping remaining follow-ups.");
+          break;
+        }
+        
         // Add lock
         followUpLocks[3].add(email);
         
@@ -912,12 +976,10 @@ export const sendThirdFollowup = async () => {
         // Get message history
         const messageHistory = await fetchMessageHistory(campaignId, leadId);
         
-        // Check if the lead has replied
-        if (hasLeadReplied(messageHistory)) {
-          console.log(`Lead ${lead.username} has already replied, updating database and skipping follow-up`);
-          await db("stir_outreach_dashboard")
-            .where("business_email", email)
-            .update({ replied: true });
+        // Check if ANYONE has replied to the thread (more comprehensive check)
+        if (hasAnyReplyInThread(messageHistory)) {
+          console.log(`Thread with ${lead.username} has at least one reply, updating database and skipping follow-up`);
+          await updateReplyStatus(email);
           followUpLocks[3].delete(email);
           continue;
         }
@@ -946,6 +1008,13 @@ export const sendThirdFollowup = async () => {
           continue;
         }
         
+        // Final time window check
+        if (!isWithinSendingWindow()) {
+          console.log(`Sending window closed during processing ${email}. Skipping.`);
+          followUpLocks[3].delete(email);
+          continue;
+        }
+        
         // Send third follow-up
         const response = await sendFollowUpEmail(
           campaignId,
@@ -967,6 +1036,12 @@ export const sendThirdFollowup = async () => {
         const randomDelay = Math.floor(Math.random() * 4 * 60 * 1000) + 60 * 1000; // 1-5 minutes in milliseconds
         console.log(`Adding random delay of ${Math.round(randomDelay/1000/60)} minutes before next follow-up`);
         await new Promise(resolve => setTimeout(resolve, randomDelay));
+        
+        // Check if we're still in the sending window
+        if (!isWithinSendingWindow()) {
+          console.log("Sending window closed during delay. Stopping remaining follow-ups.");
+          break;
+        }
         
       } catch (error) {
         console.error(`Error processing third follow-up for ${lead.username} (${lead.business_email}):`, error);
@@ -1048,17 +1123,41 @@ export const sendFollowupEmails = async () => {
   
   await sendFirstFollowup();
   
+  // Check if we're still in the sending window before continuing
+  if (!isWithinSendingWindow()) {
+    console.log("Sending window closed after first follow-up job. Skipping remaining jobs.");
+    return;
+  }
+  
   // Add a random delay between follow-up types (2-5 minutes)
   const randomDelay1 = Math.floor(Math.random() * 3 * 60 * 1000) + 2 * 60 * 1000;
   console.log(`Adding random delay of ${Math.round(randomDelay1/1000/60)} minutes before second follow-up job`);
   await new Promise(resolve => setTimeout(resolve, randomDelay1));
   
+  // Check again after delay
+  if (!isWithinSendingWindow()) {
+    console.log("Sending window closed during delay. Skipping remaining follow-ups.");
+    return;
+  }
+  
   await sendSecondFollowup();
+  
+  // Check if we're still in the sending window before continuing
+  if (!isWithinSendingWindow()) {
+    console.log("Sending window closed after second follow-up job. Skipping remaining jobs.");
+    return;
+  }
   
   // Add another random delay between follow-up types (2-5 minutes)
   const randomDelay2 = Math.floor(Math.random() * 3 * 60 * 1000) + 2 * 60 * 1000;
   console.log(`Adding random delay of ${Math.round(randomDelay2/1000/60)} minutes before third follow-up job`);
   await new Promise(resolve => setTimeout(resolve, randomDelay2));
+  
+  // Final check before third follow-up
+  if (!isWithinSendingWindow()) {
+    console.log("Sending window closed during delay. Skipping third follow-up.");
+    return;
+  }
   
   await sendThirdFollowup();
   
