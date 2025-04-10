@@ -347,6 +347,7 @@ export const updateCampaignSchedule = async (campaignId) => {
       const schedulePayload = {
         timezone: "Etc/GMT-7", // Using the specified timezone with UTC+07:00 offset
         days_of_the_week: [1, 2, 3, 4, 5], // Monday to Friday
+        // start_hour: currentTimeFormatted,
         start_hour: "08:00", // Start at 08:00
         end_hour: "15:00",   // End at 14:00
         min_time_btw_emails: 9,
@@ -407,7 +408,7 @@ export const addLeadsToCampaign = async (campaignId, poc = null) => {
         settings: {
           ignore_global_block_list: false,
           ignore_unsubscribe_list: true,
-          ignore_duplicate_leads_in_other_campaign: true,
+          ignore_duplicate_leads_in_other_campaign: false,
         },
       });
       console.log(`✅ Leads Added Successfully${poc ? ` to ${poc} campaign` : ''}:`, response.data);
