@@ -8,7 +8,12 @@ router.get("/staff", async (req, res) => {
     try {
         // Add pagination parameters with defaults
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
+        // Allow explicit per-page limit with fixed options
+        let limit = parseInt(req.query.limit) || 50;
+        // Ensure limit is one of the allowed values (25, 50, 100)
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50; // Default to 50 if an invalid value is provided
+        }
         const offset = (page - 1) * limit;
         
         // Allow selective field fetching
@@ -43,13 +48,26 @@ router.get("/staff", async (req, res) => {
         
         // Filter by has_email (has email contact info)
         if (req.query.has_email === 'true') {
-            query = query.whereNot('email', '');
+            query = query.whereNot('email', '').whereNotNull('email');
+        }
+        
+        // New: Filter by specific email
+        if (req.query.email) {
+            query = query.whereILike('email', `%${req.query.email}%`);
         }
         
         // Filter by has_phone (has phone contact info)
         if (req.query.has_phone === 'true') {
             query = query.where(function() {
                 this.whereNot('phone', '').orWhereNot('mobile', '');
+            });
+        }
+        
+        // New: Filter by specific phone/mobile number
+        if (req.query.phone) {
+            query = query.where(function() {
+                this.whereILike('phone', `%${req.query.phone}%`)
+                    .orWhereILike('mobile', `%${req.query.phone}%`);
             });
         }
         
@@ -60,7 +78,7 @@ router.get("/staff", async (req, res) => {
         
         // Execute count query with the same filters but without pagination
         const countQuery = query.clone();
-        const [{ count }] = await countQuery.count();
+        const [{ count }] = await countQuery.count('* as count');
         
         // Main data query with pagination, field selection and sorting
         const staffData = await query
@@ -159,8 +177,16 @@ router.get("/staff/:id", async (req, res) => {
 // GET endpoint to search for staff with query parameter
 router.get("/search/staff", async (req, res) => {
     try {
-        const { query, page = 1, limit = 50 } = req.query;
-        const offset = (parseInt(page) - 1) * parseInt(limit);
+        const { query } = req.query;
+        // Fix pagination
+        const page = parseInt(req.query.page) || 1;
+        // Allow explicit per-page limit with fixed options
+        let limit = parseInt(req.query.limit) || 50;
+        // Ensure limit is one of the allowed values (25, 50, 100)
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50; // Default to 50 if an invalid value is provided
+        }
+        const offset = (page - 1) * limit;
         
         if (!query) {
             return res.status(400).json({
@@ -185,17 +211,22 @@ router.get("/search/staff", async (req, res) => {
                 // Search in about
                 .orWhereILike('about', `%${query}%`)
                 // Search in main_credits
-                .orWhereILike('main_credits', `%${query}%`);
+                .orWhereILike('main_credits', `%${query}%`)
+                // Search in email
+                .orWhereILike('email', `%${query}%`)
+                // Search in phone/mobile
+                .orWhereILike('phone', `%${query}%`)
+                .orWhereILike('mobile', `%${query}%`);
             });
             
         // Get total count
         const countQuery = searchQuery.clone();
-        const [{ count }] = await countQuery.count();
+        const [{ count }] = await countQuery.count('* as count');
         
         // Execute main query with pagination
         const results = await searchQuery
             .select('*')
-            .limit(parseInt(limit))
+            .limit(limit)
             .offset(offset);
             
         res.status(200).json({
@@ -222,8 +253,15 @@ router.get("/search/staff", async (req, res) => {
 router.get("/company/:id/staff", async (req, res) => {
     try {
         const { id } = req.params;
-        const { page = 1, limit = 50 } = req.query;
-        const offset = (parseInt(page) - 1) * parseInt(limit);
+        // Fix pagination
+        const page = parseInt(req.query.page) || 1;
+        // Allow explicit per-page limit with fixed options
+        let limit = parseInt(req.query.limit) || 50;
+        // Ensure limit is one of the allowed values (25, 50, 100)
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50; // Default to 50 if an invalid value is provided
+        }
+        const offset = (page - 1) * limit;
         
         // Check if company exists
         const company = await db('cinando_companies')
@@ -240,13 +278,13 @@ router.get("/company/:id/staff", async (req, res) => {
         // Get staff count for this company
         const [{ count }] = await db('cinando_staff')
             .where('company_id', id)
-            .count();
+            .count('* as count');
             
         // Get staff for this company with pagination
         const staffMembers = await db('cinando_staff')
             .where('company_id', id)
             .select('*')
-            .limit(parseInt(limit))
+            .limit(limit)
             .offset(offset);
             
         res.status(200).json({
@@ -313,9 +351,14 @@ router.get("/company/:id", async (req, res) => {
 // GET endpoint to fetch all data from cinando_companies table
 router.get("/companies", async (req, res) => {
   try {
-    // Add pagination parameters with defaults
+    // Fix pagination
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    // Allow explicit per-page limit with fixed options
+    let limit = parseInt(req.query.limit) || 50;
+    // Ensure limit is one of the allowed values (25, 50, 100)
+    if (![25, 50, 100].includes(limit)) {
+        limit = 50; // Default to 50 if an invalid value is provided
+    }
     const offset = (page - 1) * limit;
     
     // Allow selective field fetching
@@ -343,7 +386,7 @@ router.get("/companies", async (req, res) => {
     
     // Execute count query separately for better performance
     const countQuery = query.clone();
-    const [{ count }] = await countQuery.count();
+    const [{ count }] = await countQuery.count('* as count');
     
     // Main data query with pagination, field selection and sorting
     const companiesData = await query
@@ -375,18 +418,57 @@ router.get("/companies", async (req, res) => {
 // GET endpoint to fetch staff with contact information
 router.get("/staff-with-contacts", async (req, res) => {
     try {
-        // Add pagination parameters with defaults
+        // Fix pagination
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
+        // Allow explicit per-page limit with fixed options
+        let limit = parseInt(req.query.limit) || 50;
+        // Ensure limit is one of the allowed values (25, 50, 100)
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50; // Default to 50 if an invalid value is provided
+        }
         const offset = (page - 1) * limit;
         
-        // Build query to get staff with email or phone
-        let query = db('cinando_staff')
-            .where(function() {
+        // Build query to get staff with contact info
+        let query = db('cinando_staff');
+        
+        // Filter by having email, phone, or both based on query params
+        if (req.query.has_email === 'true' && req.query.has_phone === 'true') {
+            // Staff with both email AND phone
+            query = query.where(function() {
+                this.whereNot('email', '').whereNotNull('email')
+                .andWhere(function() {
+                    this.whereNot('phone', '').orWhereNot('mobile', '');
+                });
+            });
+        } else if (req.query.has_email === 'true') {
+            // Staff with email only
+            query = query.whereNot('email', '').whereNotNull('email');
+        } else if (req.query.has_phone === 'true') {
+            // Staff with phone only
+            query = query.where(function() {
+                this.whereNot('phone', '').orWhereNot('mobile', '');
+            });
+        } else {
+            // Default: staff with any contact method
+            query = query.where(function() {
                 this.whereNot('email', '')
                 .orWhereNot('phone', '')
                 .orWhereNot('mobile', '');
             });
+        }
+        
+        // Add filter for specific email
+        if (req.query.email) {
+            query = query.whereILike('email', `%${req.query.email}%`);
+        }
+        
+        // Add filter for specific phone
+        if (req.query.phone) {
+            query = query.where(function() {
+                this.whereILike('phone', `%${req.query.phone}%`)
+                    .orWhereILike('mobile', `%${req.query.phone}%`);
+            });
+        }
             
         // Add filter by role if provided
         if (req.query.role) {
@@ -395,7 +477,7 @@ router.get("/staff-with-contacts", async (req, res) => {
         
         // Get count
         const countQuery = query.clone();
-        const [{ count }] = await countQuery.count();
+        const [{ count }] = await countQuery.count('* as count');
         
         // Execute main query
         const staffWithContacts = await query
