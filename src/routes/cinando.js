@@ -827,15 +827,16 @@ router.get("/companies/by-activities", async (req, res) => {
         // Build base query
         let query = db('cinando_companies');
         
-        // Apply activity filters - we need a company that has ANY of the activities (OR logic)
+        // Apply activity filters using PostgreSQL JSONB syntax
+        // We need companies that have ANY of the activities (OR logic)
         if (activityList.length === 1) {
             // Simple case with a single activity
-            query = query.whereRaw(`JSON_EXTRACT(activities, '$."${activityList[0]}"') IS NOT NULL`);
+            query = query.whereRaw(`activities ?? ?`, [activityList[0]]);
         } else {
             // Multiple activities - any match (OR condition)
             query = query.where(function() {
                 for (const activity of activityList) {
-                    this.orWhereRaw(`JSON_EXTRACT(activities, '$."${activity}"') IS NOT NULL`);
+                    this.orWhereRaw(`activities ?? ?`, [activity]);
                 }
             });
         }
@@ -873,7 +874,7 @@ router.get("/companies/by-activities", async (req, res) => {
                     : company.activities;
                 
                 matchedActivities = activityList.filter(activity => 
-                    companiesActivities && companiesActivities[activity] !== undefined);
+                    companiesActivities && activity in companiesActivities);
             }
             
             return {
