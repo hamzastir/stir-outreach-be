@@ -250,6 +250,7 @@ router.get("/search/staff", async (req, res) => {
 });
 
 // GET endpoint to fetch staff by company ID
+// GET endpoint to fetch staff by company ID - fixed version
 router.get("/company/:id/staff", async (req, res) => {
     try {
         const { id } = req.params;
@@ -275,18 +276,67 @@ router.get("/company/:id/staff", async (req, res) => {
             });
         }
         
-        // Get staff count for this company
-        const [{ count }] = await db('cinando_staff')
-            .where('company_id', id)
-            .count('* as count');
+        // Build query to get staff for this company - ensure we're explicitly matching the string value
+        let staffQuery = db('cinando_staff')
+            .where('company_id', id);
             
-        // Get staff for this company with pagination
-        const staffMembers = await db('cinando_staff')
-            .where('company_id', id)
+        // Add additional debugging logs
+        console.log(`Fetching staff for company ID: ${id}`);
+        
+        // Apply additional filters if provided
+        if (req.query.role) {
+            staffQuery = staffQuery.whereILike('role', `%${req.query.role}%`);
+        }
+        
+        if (req.query.has_email === 'true') {
+            staffQuery = staffQuery.whereNot('email', '').whereNotNull('email');
+        }
+        
+        if (req.query.has_phone === 'true') {
+            staffQuery = staffQuery.where(function() {
+                this.whereNot('phone', '').orWhereNot('mobile', '');
+            });
+        }
+        
+        // Log the SQL query for debugging
+        const rawQuery = staffQuery.clone().toString();
+        console.log("SQL Query:", rawQuery);
+        
+        // Get staff count for this company with applied filters
+        const countQuery = staffQuery.clone();
+        const [{ count }] = await countQuery.count('* as count');
+        console.log(`Found ${count} staff members for company ID: ${id}`);
+            
+        // Get staff for this company with pagination and applied filters
+        const staffMembers = await staffQuery
             .select('*')
+            .orderBy('id', 'asc')
             .limit(limit)
             .offset(offset);
             
+        // If no staff found, return an empty array but with successful response
+        if (!staffMembers || staffMembers.length === 0) {
+            console.log(`No staff members found for company ID: ${id}`);
+            
+            return res.status(200).json({
+                success: true,
+                data: {
+                    company,
+                    staff: []
+                },
+                pagination: {
+                    total: 0,
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    pages: 0
+                },
+                message: "No staff members found for this company"
+            });
+        }
+        
+        // Log success
+        console.log(`Successfully retrieved ${staffMembers.length} staff members for company ID: ${id}`);
+        
         res.status(200).json({
             success: true,
             data: {
@@ -533,4 +583,325 @@ router.get("/all", async (req, res) => {
   }
 });
 
+// GET endpoint to filter companies based on staff email
+router.get("/companies/by-email", async (req, res) => {
+    try {
+        const { email } = req.query;
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Email query parameter is required"
+            });
+        }
+
+        // Fix pagination
+        const page = parseInt(req.query.page) || 1;
+        let limit = parseInt(req.query.limit) || 50;
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50;
+        }
+        const offset = (page - 1) * limit;
+
+        // First find staff with matching email
+        const staffWithEmail = await db('cinando_staff')
+            .whereILike('email', `%${email}%`)
+            .select('company_id')
+            .whereNotNull('company_id')
+            .distinct('company_id');
+
+        if (staffWithEmail.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                pagination: {
+                    total: 0,
+                    page,
+                    limit,
+                    pages: 0
+                }
+            });
+        }
+
+        // Get the company IDs
+        const companyIds = staffWithEmail.map(item => item.company_id);
+
+        // Build query to get companies
+        let query = db('cinando_companies')
+            .whereIn('id', companyIds);
+
+        // Apply additional filters if provided
+        if (req.query.name) {
+            query = query.whereILike('name', `%${req.query.name}%`);
+        }
+
+        if (req.query.location) {
+            query = query.whereILike('address', `%${req.query.location}%`);
+        }
+
+        // Execute count query
+        const countQuery = query.clone();
+        const [{ count }] = await countQuery.count('* as count');
+
+        // Execute main query with pagination
+        const companies = await query
+            .select('*')
+            .orderBy('name', 'asc')
+            .limit(limit)
+            .offset(offset);
+
+        // For each company, get staff with the matching email
+        const companiesWithStaff = await Promise.all(companies.map(async (company) => {
+            const matchingStaff = await db('cinando_staff')
+                .where('company_id', company.id)
+                .whereILike('email', `%${email}%`)
+                .select('id', 'name', 'role', 'sub_role', 'email', 'phone', 'mobile');
+
+            return {
+                ...company,
+                matching_staff: matchingStaff
+            };
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: companiesWithStaff,
+            pagination: {
+                total: parseInt(count),
+                page,
+                limit,
+                pages: Math.ceil(parseInt(count) / limit)
+            }
+        });
+    } catch (error) {
+        console.error("Error filtering companies by email:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to filter companies by email",
+            error: error.message
+        });
+    }
+});
+
+// GET endpoint to filter companies based on staff contact number
+router.get("/companies/by-phone", async (req, res) => {
+    try {
+        const { phone } = req.query;
+        if (!phone) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone query parameter is required"
+            });
+        }
+
+        // Fix pagination
+        const page = parseInt(req.query.page) || 1;
+        let limit = parseInt(req.query.limit) || 50;
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50;
+        }
+        const offset = (page - 1) * limit;
+
+        // First find staff with matching phone/mobile
+        const staffWithPhone = await db('cinando_staff')
+            .where(function() {
+                this.whereILike('phone', `%${phone}%`)
+                    .orWhereILike('mobile', `%${phone}%`);
+            })
+            .select('company_id')
+            .whereNotNull('company_id')
+            .distinct('company_id');
+
+        if (staffWithPhone.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                pagination: {
+                    total: 0,
+                    page,
+                    limit,
+                    pages: 0
+                }
+            });
+        }
+
+        // Get the company IDs
+        const companyIds = staffWithPhone.map(item => item.company_id);
+
+        // Build query to get companies
+        let query = db('cinando_companies')
+            .whereIn('id', companyIds);
+
+        // Apply additional filters if provided
+        if (req.query.name) {
+            query = query.whereILike('name', `%${req.query.name}%`);
+        }
+
+        if (req.query.location) {
+            query = query.whereILike('address', `%${req.query.location}%`);
+        }
+
+        // Execute count query
+        const countQuery = query.clone();
+        const [{ count }] = await countQuery.count('* as count');
+
+        // Execute main query with pagination
+        const companies = await query
+            .select('*')
+            .orderBy('name', 'asc')
+            .limit(limit)
+            .offset(offset);
+
+        // For each company, get staff with the matching phone/mobile
+        const companiesWithStaff = await Promise.all(companies.map(async (company) => {
+            const matchingStaff = await db('cinando_staff')
+                .where('company_id', company.id)
+                .where(function() {
+                    this.whereILike('phone', `%${phone}%`)
+                        .orWhereILike('mobile', `%${phone}%`);
+                })
+                .select('id', 'name', 'role', 'sub_role', 'email', 'phone', 'mobile');
+
+            return {
+                ...company,
+                matching_staff: matchingStaff
+            };
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: companiesWithStaff,
+            pagination: {
+                total: parseInt(count),
+                page,
+                limit,
+                pages: Math.ceil(parseInt(count) / limit)
+            }
+        });
+    } catch (error) {
+        console.error("Error filtering companies by phone:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to filter companies by phone",
+            error: error.message
+        });
+    }
+});
+// GET endpoint to filter companies by activities
+router.get("/companies/by-activities", async (req, res) => {
+    try {
+        // Get activities from query parameter (comma-separated)
+        const { activities } = req.query;
+        
+        if (!activities) {
+            return res.status(400).json({
+                success: false,
+                message: "Activities query parameter is required (comma-separated list)"
+            });
+        }
+        
+        // Parse the activities into an array
+        const activityList = activities.split(',').map(item => item.trim());
+        
+        if (activityList.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one activity must be provided"
+            });
+        }
+        
+        // Fix pagination
+        const page = parseInt(req.query.page) || 1;
+        let limit = parseInt(req.query.limit) || 50;
+        if (![25, 50, 100].includes(limit)) {
+            limit = 50;
+        }
+        const offset = (page - 1) * limit;
+        
+        // Allow selective field fetching
+        const fields = req.query.fields ? req.query.fields.split(',') : ['*'];
+        
+        // Add sorting option
+        const sortBy = req.query.sortBy || 'name';
+        const sortOrder = req.query.sortOrder === 'desc' ? 'desc' : 'asc';
+        
+        // Build base query
+        let query = db('cinando_companies');
+        
+        // Apply activity filters - we need a company that has ANY of the activities (OR logic)
+        if (activityList.length === 1) {
+            // Simple case with a single activity
+            query = query.whereRaw(`JSON_EXTRACT(activities, '$."${activityList[0]}"') IS NOT NULL`);
+        } else {
+            // Multiple activities - any match (OR condition)
+            query = query.where(function() {
+                for (const activity of activityList) {
+                    this.orWhereRaw(`JSON_EXTRACT(activities, '$."${activity}"') IS NOT NULL`);
+                }
+            });
+        }
+        
+        // Additional filtering options
+        
+        // Filter by name
+        if (req.query.name) {
+            query = query.whereILike('name', `%${req.query.name}%`);
+        }
+        
+        // Filter by location
+        if (req.query.location) {
+            query = query.whereILike('address', `%${req.query.location}%`);
+        }
+        
+        // Get count for pagination
+        const countQuery = query.clone();
+        const [{ count }] = await countQuery.count('* as count');
+        
+        // Execute main query with pagination and sorting
+        const companies = await query
+            .select(fields)
+            .orderBy(sortBy, sortOrder)
+            .limit(limit)
+            .offset(offset);
+        
+        // For better user experience, add a field showing which activities matched
+        const companiesWithMatchedActivities = companies.map(company => {
+            let matchedActivities = [];
+            
+            if (company.activities) {
+                const companiesActivities = typeof company.activities === 'string' 
+                    ? JSON.parse(company.activities) 
+                    : company.activities;
+                
+                matchedActivities = activityList.filter(activity => 
+                    companiesActivities && companiesActivities[activity] !== undefined);
+            }
+            
+            return {
+                ...company,
+                matched_activities: matchedActivities
+            };
+        });
+        
+        res.status(200).json({
+            success: true,
+            data: companiesWithMatchedActivities,
+            filter: {
+                activities: activityList
+            },
+            pagination: {
+                total: parseInt(count),
+                page,
+                limit,
+                pages: Math.ceil(parseInt(count) / limit)
+            }
+        });
+    } catch (error) {
+        console.error("Error filtering companies by activities:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to filter companies by activities",
+            error: error.message
+        });
+    }
+});
 export default router;
