@@ -131,34 +131,52 @@ async function generateEmailSnippets(username, email, captions, bio) {
   }
 
 
-async function fetchInstagramUserData(username) {
+  async function fetchInstagramUserData(username) {
     console.log(`Fetching Instagram data for ${username}...`);
     try {
       // Fetch user info and posts in parallel
-      const [userInfoResponse, userPostsResponse] = await Promise.all([
+      const [userInfo, userPosts] = await Promise.all([
         fetchUserInfo(username),
         fetchUserPosts(username),
       ]);
+
   
       // Extract captions from posts
       const captions = [];
-      if (userPostsResponse?.data?.items && userPostsResponse.data.items.length > 0) {
-        const posts = userPostsResponse.data.items.slice(0, 5);
+      if (userPosts?.items && userPosts.items.length > 0) {
+        console.log(`Found ${userPosts.items.length} posts, extracting captions from first 5`);
+        const posts = userPosts.items.slice(0, 5);
         for (const post of posts) {
           if (post?.caption?.text) {
             captions.push(post.caption.text);
           }
         }
+      } else if (userPosts?.feed_items && userPosts.feed_items.length > 0) {
+        // Alternative structure that might be present in some API responses
+        console.log(`Found ${userPosts.feed_items.length} feed items, extracting captions from first 5`);
+        const posts = userPosts.feed_items.slice(0, 5);
+        for (const item of posts) {
+          const post = item.media_or_ad || item;
+          if (post?.caption?.text) {
+            captions.push(post.caption.text);
+          }
+        }
+      } else {
+        console.log("No posts found or unexpected posts structure");
       }
   
+      console.log(`Extracted ${captions.length} captions`);
+      
       // Create and return user data object
-      return {
+      const userData = {
         username: username,
-        biography: userInfoResponse?.data?.biography || "",
-        dm_id : userInfoResponse?.data?.interop_messaging_user_fbid || "",
-        public_email: userInfoResponse?.data?.public_email || null,
+        biography: userInfo?.biography || "",
+        public_email: userInfo?.public_email || null,
         last_five_captions: captions,
       };
+      
+      console.log("Returning user data:", userData);
+      return userData;
     } catch (error) {
       console.error(`Error fetching Instagram data for ${username}:`, error);
       // Return minimal data in case of error

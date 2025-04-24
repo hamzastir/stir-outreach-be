@@ -43,3 +43,46 @@ export async function fetchUserPosts(username) {
     return null;
   }
 }
+async function fetchInstagramUserData(username) {
+  console.log(`Fetching Instagram data for ${username}...`);
+  try {
+    // Fetch user info and posts in parallel
+    const [userInfoResponse, userPostsResponse] = await Promise.all([
+      fetchUserInfo(username),
+      fetchUserPosts(username),
+    ]);
+
+    // Extract captions from posts
+    const captions = [];
+    if (userPostsResponse?.items && userPostsResponse.items.length > 0) {
+      const posts = userPostsResponse.items.slice(0, 5);
+      for (const post of posts) {
+        if (post?.caption?.text) {
+          captions.push(post.caption.text);
+        }
+      }
+    }
+
+    // Create and return user data object
+    return {
+      username: username,
+      biography: userInfoResponse?.biography || "",
+      public_email: userInfoResponse?.public_email || null,
+      last_five_captions: captions,
+    };
+  } catch (error) {
+    console.error(`Error fetching Instagram data for ${username}:`, error);
+    // Return minimal data in case of error
+    return {
+      username: username,
+      biography: "",
+      public_email: null,
+      last_five_captions: [],
+    };
+  }
+}
+const test = await fetchInstagramUserData("spaceofcinema");
+console.log(test);
+// //
+// const test2 = await fetchUserPosts("spaceofcinema");
+// console.log(test2);

@@ -107,43 +107,62 @@ async function getUsersToSchedule(pocFilter = null, limit = null) {
 }
 
 async function fetchInstagramUserData(username) {
-  console.log(`Fetching Instagram data for ${username}...`);
-  try {
-    // Fetch user info and posts in parallel
-    const [userInfoResponse, userPostsResponse] = await Promise.all([
-      fetchUserInfo(username),
-      fetchUserPosts(username),
-    ]);
+    console.log(`Fetching Instagram data for ${username}...`);
+    try {
+      // Fetch user info and posts in parallel
+      const [userInfo, userPosts] = await Promise.all([
+        fetchUserInfo(username),
+        fetchUserPosts(username),
+      ]);
 
-    // Extract captions from posts
-    const captions = [];
-    if (userPostsResponse?.data?.items && userPostsResponse.data.items.length > 0) {
-      const posts = userPostsResponse.data.items.slice(0, 5);
-      for (const post of posts) {
-        if (post?.caption?.text) {
-          captions.push(post.caption.text);
+  
+      // Extract captions from posts
+      const captions = [];
+      if (userPosts?.items && userPosts.items.length > 0) {
+        console.log(`Found ${userPosts.items.length} posts, extracting captions from first 5`);
+        const posts = userPosts.items.slice(0, 5);
+        for (const post of posts) {
+          if (post?.caption?.text) {
+            captions.push(post.caption.text);
+          }
         }
+      } else if (userPosts?.feed_items && userPosts.feed_items.length > 0) {
+        // Alternative structure that might be present in some API responses
+        console.log(`Found ${userPosts.feed_items.length} feed items, extracting captions from first 5`);
+        const posts = userPosts.feed_items.slice(0, 5);
+        for (const item of posts) {
+          const post = item.media_or_ad || item;
+          if (post?.caption?.text) {
+            captions.push(post.caption.text);
+          }
+        }
+      } else {
+        console.log("No posts found or unexpected posts structure");
       }
+  
+      console.log(`Extracted ${captions.length} captions`);
+      
+      // Create and return user data object
+      const userData = {
+        username: username,
+        biography: userInfo?.biography || "",
+        public_email: userInfo?.public_email || null,
+        last_five_captions: captions,
+      };
+      
+      console.log("Returning user data:", userData);
+      return userData;
+    } catch (error) {
+      console.error(`Error fetching Instagram data for ${username}:`, error);
+      // Return minimal data in case of error
+      return {
+        username: username,
+        biography: "",
+        public_email: null,
+        last_five_captions: [],
+      };
     }
-
-    // Create and return user data object
-    return {
-      username: username,
-      biography: userInfoResponse?.data?.biography || "",
-      public_email: userInfoResponse?.data?.public_email || null,
-      last_five_captions: captions,
-    };
-  } catch (error) {
-    console.error(`Error fetching Instagram data for ${username}:`, error);
-    // Return minimal data in case of error
-    return {
-      username: username,
-      biography: "",
-      public_email: null,
-      last_five_captions: [],
-    };
   }
-}
 
 export async function prepareRecipients(poc = null) {
   // Check if we have cached recipients for this POC
@@ -174,6 +193,8 @@ export async function prepareRecipients(poc = null) {
           // Fetch Instagram data directly instead of using static data
           const userData = await fetchInstagramUserData(user.username);
           console.log(`Generating snippet for ${userData.username} (POC: ${user.poc})`);
+          console.log("under start capaignn")
+          console.log(userData);
 
           // Use the email from the database as primary source
           const userEmail = user.business_email || userData.public_email;
@@ -186,7 +207,7 @@ export async function prepareRecipients(poc = null) {
           // Generate snippets using the fetched Instagram data
           const { snippet1, snippet2 } = await generateEmailSnippets(
             userData.username,
-            userEmail,
+            // userEmail,
             userData.last_five_captions,
             userData.biography
           );
@@ -302,8 +323,8 @@ export async function addEmailAccountToCampaign(campaignId, poc = null) {
       console.log(`Using email account ${emailAccountId} for POC ${poc}`);
     } else {
       // Default behavior - use Akshat's account as in the original code
-      emailAccountIds = [pocEmailAccountMapping["akshat@createstir.com"]];
-      console.log(`Using default email account ${emailAccountIds[0]}`);
+      emailAccountIds = [pocEmailAccountMapping["yug@createstir.com"]];
+      console.log(`Using default email account ${emailAccountIds[1]}`);
     }
     
     const data = { email_account_ids: emailAccountIds };

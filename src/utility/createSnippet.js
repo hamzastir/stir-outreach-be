@@ -46,8 +46,10 @@ async function getTopInfluencers() {
   }
 }
 
-async function generateEmailSnippets(username, email, captions, bio) {
+async function generateEmailSnippets(username, captions, bio) {
   try {
+    console.log("under createsnippet function");
+    console.log("Generating email snippets for:", username, captions, bio);
     if (!username || !captions || !bio) {
       throw new Error("Missing required parameters");
     }
