@@ -107,62 +107,43 @@ async function getUsersToSchedule(pocFilter = null, limit = null) {
 }
 
 async function fetchInstagramUserData(username) {
-    console.log(`Fetching Instagram data for ${username}...`);
-    try {
-      // Fetch user info and posts in parallel
-      const [userInfo, userPosts] = await Promise.all([
-        fetchUserInfo(username),
-        fetchUserPosts(username),
-      ]);
+  console.log(`Fetching Instagram data for ${username}...`);
+  try {
+    // Fetch user info and posts in parallel
+    const [userInfoResponse, userPostsResponse] = await Promise.all([
+      fetchUserInfo(username),
+      fetchUserPosts(username),
+    ]);
 
-  
-      // Extract captions from posts
-      const captions = [];
-      if (userPosts?.items && userPosts.items.length > 0) {
-        console.log(`Found ${userPosts.items.length} posts, extracting captions from first 5`);
-        const posts = userPosts.items.slice(0, 5);
-        for (const post of posts) {
-          if (post?.caption?.text) {
-            captions.push(post.caption.text);
-          }
+    // Extract captions from posts
+    const captions = [];
+    if (userPostsResponse?.items && userPostsResponse.items.length > 0) {
+      const posts = userPostsResponse.items.slice(0, 5);
+      for (const post of posts) {
+        if (post?.caption?.text) {
+          captions.push(post.caption.text);
         }
-      } else if (userPosts?.feed_items && userPosts.feed_items.length > 0) {
-        // Alternative structure that might be present in some API responses
-        console.log(`Found ${userPosts.feed_items.length} feed items, extracting captions from first 5`);
-        const posts = userPosts.feed_items.slice(0, 5);
-        for (const item of posts) {
-          const post = item.media_or_ad || item;
-          if (post?.caption?.text) {
-            captions.push(post.caption.text);
-          }
-        }
-      } else {
-        console.log("No posts found or unexpected posts structure");
       }
-  
-      console.log(`Extracted ${captions.length} captions`);
-      
-      // Create and return user data object
-      const userData = {
-        username: username,
-        biography: userInfo?.biography || "",
-        public_email: userInfo?.public_email || null,
-        last_five_captions: captions,
-      };
-      
-      console.log("Returning user data:", userData);
-      return userData;
-    } catch (error) {
-      console.error(`Error fetching Instagram data for ${username}:`, error);
-      // Return minimal data in case of error
-      return {
-        username: username,
-        biography: "",
-        public_email: null,
-        last_five_captions: [],
-      };
     }
+
+    // Create and return user data object
+    return {
+      username: username,
+      biography: userInfoResponse?.biography || "",
+      public_email: userInfoResponse?.public_email || null,
+      last_five_captions: captions,
+    };
+  } catch (error) {
+    console.error(`Error fetching Instagram data for ${username}:`, error);
+    // Return minimal data in case of error
+    return {
+      username: username,
+      biography: "",
+      public_email: null,
+      last_five_captions: [],
+    };
   }
+}
 
 export async function prepareRecipients(poc = null) {
   // Check if we have cached recipients for this POC
