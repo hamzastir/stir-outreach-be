@@ -1,8 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import { config } from "./src/config/index.js";
-import axios from "axios";
 import {
   addEmailAccountToCampaign,
   addLeadsToCampaign,
@@ -20,7 +18,6 @@ import { db } from "./src/db/db.js";
 import { db as pdb } from "./src/db/primaryDb.js";
 
 import cron from "node-cron";
-import moment from "moment-timezone";
 import { checkAllBouncedEmails, ensureRequiredColumns } from "./src/utility/checkBounceEmail.js";
 
 import { processSmartleadWebhook } from "./src/utility/smartleadWebhookController.js";
@@ -48,7 +45,6 @@ app.use(
   })
 );
 app.use(express.json());
-console.log({ config });
 
 // Store campaignId globally so it can be accessed by different routes
 let globalCampaignId = null;

@@ -81,8 +81,5 @@ async function fetchInstagramUserData(username) {
     };
   }
 }
-const test = await fetchInstagramUserData("spaceofcinema");
-console.log(test);
-// //
-// const test2 = await fetchUserPosts("spaceofcinema");
-// console.log(test2);
+// const test = await fetchInstagramUserData("spaceofcinema");
+// console.log(test);

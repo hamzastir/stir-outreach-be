@@ -1,5 +1,4 @@
 import { createAxiosInstance } from "../utility/axiosInstance.js";
-import { config } from "../config/index.js";
 import generateEmailSnippets from "./createSnippet.js";
 import { db } from "../db/db.js";
 import { fetchUserInfo, fetchUserPosts } from "./instaApi.js";
@@ -8,23 +7,23 @@ let cachedRecipientsByPoc = {};
 const pocEmailAccountMapping = {
   // "saif@createstir.com": 5940901,
   "yug@createstir.com": 5909762,
-  "akshat@createstir.com": 5916763,
+"akshat@createstir.com": 5916763,
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const withRetry = async (operation, name) => {
-  for (let attempt = 1; attempt <= config.MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       return await operation();
     } catch (error) {
       console.log(`Attempt ${attempt} failed for ${name}`);
 
-      if (attempt === config.MAX_RETRIES) {
+      if (attempt === 3) {
         throw error;
       }
 
-      const delayTime = config.RETRY_DELAY * attempt;
+      const delayTime = 5000 * attempt;
       console.log(`Retrying in ${delayTime / 1000} seconds...`);
       await delay(delayTime);
     }
